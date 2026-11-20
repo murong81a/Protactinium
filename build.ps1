@@ -34,7 +34,7 @@ $ClearStages = $Clean
 $base = $PSScriptRoot
 $root = Split-Path -Parent $base
 
-$javaHome = 'D:\JAVA\java25'
+$javaHome = if ($env:PROTACTINIUM_JAVA_HOME) { $env:PROTACTINIUM_JAVA_HOME } else { 'D:\JAVA\java25' }
 $javac = Join-Path $javaHome 'bin\javac.exe'
 $jarExe = Join-Path $javaHome 'bin\jar.exe'
 $javaExe = Join-Path $javaHome 'bin\java.exe'
@@ -45,7 +45,7 @@ if (-not (Test-Path $forgeJar)) { throw "1.10.2 Forge jar not found: $forgeJar" 
 
 # MCP stable_29 SRG: maps MCP names to the SRG names a production client links against.
 $srg = Join-Path $root '_tmp\ysm\gradle-home\caches\minecraft\de\oceanlabs\mcp\mcp_stable\29\1.10.2\srgs\mcp-srg.srg'
-$fart = 'D:\pcl\libraries\net\minecraftforge\ForgeAutoRenamingTool\0.1.22\ForgeAutoRenamingTool-0.1.22-all.jar'
+$fart = if ($env:PROTACTINIUM_FART) { $env:PROTACTINIUM_FART } elseif (Test-Path (Join-Path $base 'libs\ForgeAutoRenamingTool-0.1.22-all.jar')) { Join-Path $base 'libs\ForgeAutoRenamingTool-0.1.22-all.jar' } else { 'D:\pcl\libraries\net\minecraftforge\ForgeAutoRenamingTool\0.1.22\ForgeAutoRenamingTool-0.1.22-all.jar' }
 
 # Compile against a view of Forge that already has this mod's access transformer applied.
 #
@@ -58,7 +58,7 @@ $forgeBase = Join-Path $root '_tmp\ysm\port\.gradle\minecraft\forgeBin-1.10.2-12
 if (-not (Test-Path $forgeBase)) { throw "1.10.2 Forge jar not found: $forgeBase" }
 $atFile = Join-Path $base 'src\main\resources\actinium_at.cfg'
 $forgeJar = Join-Path $base 'build\forgeBin-at.jar'
-$python = 'C:\Users\moye136\AppData\Local\Programs\Python\Python312\python.exe'
+$python = if ($env:PROTACTINIUM_PYTHON) { $env:PROTACTINIUM_PYTHON } elseif (Get-Command python.exe -ErrorAction SilentlyContinue) { (Get-Command python.exe).Source } else { 'C:\Users\moye136\AppData\Local\Programs\Python\Python312\python.exe' }
 $needAt = -not (Test-Path $forgeJar)
 if (-not $needAt) { $needAt = (Get-Item $atFile).LastWriteTime -gt (Get-Item $forgeJar).LastWriteTime }
 if ($needAt) {
@@ -253,7 +253,7 @@ foreach ($name in $Stage) {
         # Injection selectors and handler signatures are checked against the real deobfuscated
         # classes. The form-only gates above passed while every one of these failed at runtime,
         # which is why both audits resolve names through javap against the real jar.
-        $javap = 'D:\JAVA\zulu-jdk17.0.21.0.3\bin\javap.exe'
+        $javap = if ($env:PROTACTINIUM_JAVAP) { $env:PROTACTINIUM_JAVAP } elseif (Test-Path (Join-Path $javaHome 'bin\javap.exe')) { Join-Path $javaHome 'bin\javap.exe' } else { 'D:\JAVA\zulu-jdk17.0.21.0.3\bin\javap.exe' }
         $forgeBinAt = Join-Path $base 'build\forgeBin-at.jar'
         if ((Test-Path $javap) -and (Test-Path $forgeBinAt)) {
             & $python (Join-Path $base 'tools\audit_injection_selectors.py') $base $forgeBinAt $javap $srg
