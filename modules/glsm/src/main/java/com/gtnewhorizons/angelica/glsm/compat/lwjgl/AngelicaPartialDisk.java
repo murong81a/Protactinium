@@ -1,0 +1,241 @@
+package com.gtnewhorizons.angelica.glsm.compat.lwjgl;
+
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import org.lwjgl.util.glu.PartialDisk;
+
+import static org.lwjgl.opengl.GL11.GL_LINE_STRIP;
+import static org.lwjgl.opengl.GL11.GL_POINTS;
+import static org.lwjgl.opengl.GL11.GL_TRIANGLE_FAN;
+import static org.lwjgl.opengl.GL11.GL_TRIANGLE_STRIP;
+import static org.lwjgl.util.glu.GLU.GLU_FILL;
+import static org.lwjgl.util.glu.GLU.GLU_FLAT;
+import static org.lwjgl.util.glu.GLU.GLU_LINE;
+import static org.lwjgl.util.glu.GLU.GLU_OUTSIDE;
+import static org.lwjgl.util.glu.GLU.GLU_POINT;
+import static org.lwjgl.util.glu.GLU.GLU_SILHOUETTE;
+import static org.lwjgl.util.glu.GLU.GLU_SMOOTH;
+import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
+import com.gtnewhorizons.angelica.glsm.GLSMDraws;
+
+@SuppressWarnings("unused")
+public class AngelicaPartialDisk extends PartialDisk {
+
+    private static final float PI = (float) Math.PI;
+    private static final int CACHE_SIZE = 240;
+    private final float[] sinCache = new float[CACHE_SIZE];
+    private final float[] cosCache = new float[CACHE_SIZE];
+
+    @Override
+    public void draw(float innerRadius, float outerRadius, int slices, int loops, float startAngle, float sweepAngle) {
+        float deltaRadius;
+        float angleOffset;
+        float angle;
+        float sintemp;
+        float costemp;
+        float radiusLow;
+        float radiusHigh;
+        float texLow = 0.0f;
+        float texHigh = 0.0f;
+        int slices2;
+        int finish;
+
+        if (slices >= CACHE_SIZE) {
+            slices = CACHE_SIZE - 1;
+        }
+        if (slices < 2 || loops < 1 || outerRadius <= 0.0f || innerRadius < 0.0f || innerRadius > outerRadius) {
+            GLStateManager.LOGGER.warn("PartialDisk: GLU_INVALID_VALUE (slices={}, loops={}, innerRadius={}, outerRadius={})", slices, loops, innerRadius, outerRadius);
+            return;
+        }
+
+        if (sweepAngle < -360.0f) {
+            sweepAngle = 360.0f;
+        }
+        if (sweepAngle > 360.0f) {
+            sweepAngle = 360.0f;
+        }
+        if (sweepAngle < 0.0f) {
+            startAngle += sweepAngle;
+            sweepAngle = -sweepAngle;
+        }
+
+        slices2 = sweepAngle == 360.0f ? slices : slices + 1;
+        deltaRadius = outerRadius - innerRadius;
+        angleOffset = startAngle / 180.0f * PI;
+        for (int i = 0; i <= slices; i++) {
+            angle = angleOffset + (PI * sweepAngle / 180.0f) * i / slices;
+            sinCache[i] = (float) Math.sin(angle);
+            cosCache[i] = (float) Math.cos(angle);
+        }
+        if (sweepAngle == 360.0f) {
+            sinCache[slices] = sinCache[0];
+            cosCache[slices] = cosCache[0];
+        }
+
+        switch (super.getNormals()) {
+            case GLU_FLAT, GLU_SMOOTH -> GLSMCurrentAttribs.glNormal3f(0.0f, 0.0f, super.getOrientation() == GLU_OUTSIDE ? 1.0f : -1.0f);
+            default -> {
+            }
+        }
+
+        switch (super.getDrawStyle()) {
+            case GLU_FILL -> {
+                if (innerRadius == 0.0f) {
+                    finish = loops - 1;
+                    GLSMDraws.glBegin(GL_TRIANGLE_FAN);
+                    if (super.getTextureFlag()) {
+                        GLSMCurrentAttribs.glTexCoord2f(0.5f, 0.5f);
+                    }
+                    GLSMDraws.glVertex3f(0.0f, 0.0f, 0.0f);
+                    radiusLow = outerRadius - deltaRadius * ((float) (loops - 1) / loops);
+                    if (super.getTextureFlag()) {
+                        texLow = radiusLow / outerRadius / 2.0f;
+                    }
+                    if (super.getOrientation() == GLU_OUTSIDE) {
+                        for (int i = slices; i >= 0; i--) {
+                            if (super.getTextureFlag()) {
+                                GLSMCurrentAttribs.glTexCoord2f(texLow * sinCache[i] + 0.5f, texLow * cosCache[i] + 0.5f);
+                            }
+                            GLSMDraws.glVertex3f(radiusLow * sinCache[i], radiusLow * cosCache[i], 0.0f);
+                        }
+                    } else {
+                        for (int i = 0; i <= slices; i++) {
+                            if (super.getTextureFlag()) {
+                                GLSMCurrentAttribs.glTexCoord2f(texLow * sinCache[i] + 0.5f, texLow * cosCache[i] + 0.5f);
+                            }
+                            GLSMDraws.glVertex3f(radiusLow * sinCache[i], radiusLow * cosCache[i], 0.0f);
+                        }
+                    }
+                    GLSMDraws.glEnd();
+                } else {
+                    finish = loops;
+                }
+
+                for (int j = 0; j < finish; j++) {
+                    radiusLow = outerRadius - deltaRadius * ((float) j / loops);
+                    radiusHigh = outerRadius - deltaRadius * ((float) (j + 1) / loops);
+                    if (super.getTextureFlag()) {
+                        texLow = radiusLow / outerRadius / 2.0f;
+                        texHigh = radiusHigh / outerRadius / 2.0f;
+                    }
+                    GLSMDraws.glBegin(GL_TRIANGLE_STRIP);
+                    for (int i = 0; i <= slices; i++) {
+                        if (super.getOrientation() == GLU_OUTSIDE) {
+                            if (super.getTextureFlag()) {
+                                GLSMCurrentAttribs.glTexCoord2f(texLow * sinCache[i] + 0.5f, texLow * cosCache[i] + 0.5f);
+                            }
+                            GLSMDraws.glVertex3f(radiusLow * sinCache[i], radiusLow * cosCache[i], 0.0f);
+                            if (super.getTextureFlag()) {
+                                GLSMCurrentAttribs.glTexCoord2f(texHigh * sinCache[i] + 0.5f, texHigh * cosCache[i] + 0.5f);
+                            }
+                            GLSMDraws.glVertex3f(radiusHigh * sinCache[i], radiusHigh * cosCache[i], 0.0f);
+                        } else {
+                            if (super.getTextureFlag()) {
+                                GLSMCurrentAttribs.glTexCoord2f(texHigh * sinCache[i] + 0.5f, texHigh * cosCache[i] + 0.5f);
+                            }
+                            GLSMDraws.glVertex3f(radiusHigh * sinCache[i], radiusHigh * cosCache[i], 0.0f);
+                            if (super.getTextureFlag()) {
+                                GLSMCurrentAttribs.glTexCoord2f(texLow * sinCache[i] + 0.5f, texLow * cosCache[i] + 0.5f);
+                            }
+                            GLSMDraws.glVertex3f(radiusLow * sinCache[i], radiusLow * cosCache[i], 0.0f);
+                        }
+                    }
+                    GLSMDraws.glEnd();
+                }
+            }
+            case GLU_POINT -> {
+                GLSMDraws.glBegin(GL_POINTS);
+                for (int i = 0; i < slices2; i++) {
+                    sintemp = sinCache[i];
+                    costemp = cosCache[i];
+                    for (int j = 0; j <= loops; j++) {
+                        radiusLow = outerRadius - deltaRadius * ((float) j / loops);
+                        if (super.getTextureFlag()) {
+                            texLow = radiusLow / outerRadius / 2.0f;
+                            GLSMCurrentAttribs.glTexCoord2f(texLow * sinCache[i] + 0.5f, texLow * cosCache[i] + 0.5f);
+                        }
+                        GLSMDraws.glVertex3f(radiusLow * sintemp, radiusLow * costemp, 0.0f);
+                    }
+                }
+                GLSMDraws.glEnd();
+            }
+            case GLU_LINE -> {
+                if (innerRadius == outerRadius) {
+                    GLSMDraws.glBegin(GL_LINE_STRIP);
+                    for (int i = 0; i <= slices; i++) {
+                        if (super.getTextureFlag()) {
+                            GLSMCurrentAttribs.glTexCoord2f(sinCache[i] / 2.0f + 0.5f, cosCache[i] / 2.0f + 0.5f);
+                        }
+                        GLSMDraws.glVertex3f(innerRadius * sinCache[i], innerRadius * cosCache[i], 0.0f);
+                    }
+                    GLSMDraws.glEnd();
+                    break;
+                }
+                for (int j = 0; j <= loops; j++) {
+                    radiusLow = outerRadius - deltaRadius * ((float) j / loops);
+                    if (super.getTextureFlag()) {
+                        texLow = radiusLow / outerRadius / 2.0f;
+                    }
+                    GLSMDraws.glBegin(GL_LINE_STRIP);
+                    for (int i = 0; i <= slices; i++) {
+                        if (super.getTextureFlag()) {
+                            GLSMCurrentAttribs.glTexCoord2f(texLow * sinCache[i] + 0.5f, texLow * cosCache[i] + 0.5f);
+                        }
+                        GLSMDraws.glVertex3f(radiusLow * sinCache[i], radiusLow * cosCache[i], 0.0f);
+                    }
+                    GLSMDraws.glEnd();
+                }
+                for (int i = 0; i < slices2; i++) {
+                    sintemp = sinCache[i];
+                    costemp = cosCache[i];
+                    GLSMDraws.glBegin(GL_LINE_STRIP);
+                    for (int j = 0; j <= loops; j++) {
+                        radiusLow = outerRadius - deltaRadius * ((float) j / loops);
+                        if (super.getTextureFlag()) {
+                            texLow = radiusLow / outerRadius / 2.0f;
+                            GLSMCurrentAttribs.glTexCoord2f(texLow * sinCache[i] + 0.5f, texLow * cosCache[i] + 0.5f);
+                        }
+                        GLSMDraws.glVertex3f(radiusLow * sintemp, radiusLow * costemp, 0.0f);
+                    }
+                    GLSMDraws.glEnd();
+                }
+            }
+            case GLU_SILHOUETTE -> {
+                if (sweepAngle < 360.0f) {
+                    for (int i = 0; i <= slices; i += slices) {
+                        sintemp = sinCache[i];
+                        costemp = cosCache[i];
+                        GLSMDraws.glBegin(GL_LINE_STRIP);
+                        for (int j = 0; j <= loops; j++) {
+                            radiusLow = outerRadius - deltaRadius * ((float) j / loops);
+                            if (super.getTextureFlag()) {
+                                texLow = radiusLow / outerRadius / 2.0f;
+                                GLSMCurrentAttribs.glTexCoord2f(texLow * sinCache[i] + 0.5f, texLow * cosCache[i] + 0.5f);
+                            }
+                            GLSMDraws.glVertex3f(radiusLow * sintemp, radiusLow * costemp, 0.0f);
+                        }
+                        GLSMDraws.glEnd();
+                    }
+                }
+                for (int j = 0; j <= loops; j += loops) {
+                    radiusLow = outerRadius - deltaRadius * ((float) j / loops);
+                    if (super.getTextureFlag()) {
+                        texLow = radiusLow / outerRadius / 2.0f;
+                    }
+                    GLSMDraws.glBegin(GL_LINE_STRIP);
+                    for (int i = 0; i <= slices; i++) {
+                        if (super.getTextureFlag()) {
+                            GLSMCurrentAttribs.glTexCoord2f(texLow * sinCache[i] + 0.5f, texLow * cosCache[i] + 0.5f);
+                        }
+                        GLSMDraws.glVertex3f(radiusLow * sinCache[i], radiusLow * cosCache[i], 0.0f);
+                    }
+                    GLSMDraws.glEnd();
+                    if (innerRadius == outerRadius) {
+                        break;
+                    }
+                }
+            }
+            default -> {
+            }
+        }
+    }
+}

@@ -1,0 +1,22 @@
+{
+  "package": "com.dhj.actinium.mixin.mod.lumenized",
+  "required": true,
+  "refmap": "mixins.actinium-refmap.json",
+  "target": "@env(DEFAULT)",
+  "minVersion": "0.8.5",
+  "compatibilityLevel": "JAVA_8",
+  "mixins": [],
+  "server": [],
+  "client": [
+    "MixinRenderUtilDepth",
+    "MixinBloomEffectUtilClear",
+    "MixinBloomEffectUtilStateGuard",
+    "MixinShadersDepthTest",
+    "MixinDepthTextureUtil",
+    "BloomEffectUtilInvoker",
+    "MixinBloomEmptyGroupPostProcess"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

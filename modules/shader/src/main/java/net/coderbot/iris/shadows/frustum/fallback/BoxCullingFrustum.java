@@ -1,0 +1,60 @@
+package net.coderbot.iris.shadows.frustum.fallback;
+
+import net.coderbot.iris.shadows.frustum.BoxCuller;
+import net.minecraft.client.renderer.culling.Frustum;
+import net.minecraft.util.math.AxisAlignedBB;
+import dhj.embeddedt.embeddium.impl.render.viewport.Viewport;
+import dhj.embeddedt.embeddium.impl.render.viewport.ViewportProvider;
+import org.joml.Vector3d;
+
+public class BoxCullingFrustum extends Frustum implements ViewportProvider, dhj.embeddedt.embeddium.impl.render.viewport.frustum.Frustum {
+	private final BoxCuller boxCuller;
+	private final Vector3d position = new Vector3d();
+	private double x;
+	private double y;
+	private double z;
+	private int worldMinYDH;
+	private int worldMaxYDH;
+
+	public BoxCullingFrustum(BoxCuller boxCuller) {
+		this.boxCuller = boxCuller;
+	}
+
+	@Override
+	public void setPosition(double cameraX, double cameraY, double cameraZ) {
+		super.setPosition(cameraX, cameraY, cameraZ);
+		this.x = cameraX;
+		this.y = cameraY;
+		this.z = cameraZ;
+		boxCuller.setPosition(cameraX, cameraY, cameraZ);
+	}
+
+	@Override
+	public boolean isBoundingBoxInFrustum(AxisAlignedBB aabb) {
+		return !boxCuller.isCulled(aabb);
+	}
+
+	@Override
+	public boolean testAab(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+		return !boxCuller.isCulledViewRelative(minX, minY, minZ, maxX, maxY, maxZ);
+	}
+
+	/** Exposes the distance-box containment state used by region-level culling. */
+	@Override
+	public int intersectAab(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+		if (boxCuller.isCulledViewRelative(minX, minY, minZ, maxX, maxY, maxZ)) {
+			return OUTSIDE;
+		}
+
+		return boxCuller.isFullyInsideSodium(minX, minY, minZ, maxX, maxY, maxZ)
+				? FULLY_INSIDE
+				: PARTIALLY_INSIDE;
+	}
+
+	@Override
+	public Viewport sodium$createViewport() {
+		return new Viewport(this, position.set(x, y, z));
+	}
+
+
+}

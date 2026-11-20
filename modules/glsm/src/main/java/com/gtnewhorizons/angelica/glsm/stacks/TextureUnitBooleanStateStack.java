@@ -1,0 +1,59 @@
+package com.gtnewhorizons.angelica.glsm.stacks;
+
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
+import org.lwjgl.opengl.GL13;
+
+public final class TextureUnitBooleanStateStack extends BooleanStateStack {
+    private final int unitIndex;
+
+    public TextureUnitBooleanStateStack(int glCap, int unitIndex) {
+        super(glCap, false, true);
+        this.unitIndex = unitIndex;
+    }
+
+    public TextureUnitBooleanStateStack(int glCap, int unitIndex, boolean initialState) {
+        super(glCap, initialState, true);
+        this.unitIndex = unitIndex;
+    }
+
+    TextureUnitBooleanStateStack(int glCap, int unitIndex, boolean initialState, boolean ffpStateOnly) {
+        super(glCap, initialState, ffpStateOnly);
+        this.unitIndex = unitIndex;
+    }
+
+    @Override
+    public void setEnabled(boolean enabled) {
+        GLStateManager.recordExitCapability(cowDepths().owner, glCap, unitIndex);
+        if (!GLStateManager.isCachingEnabled() || enabled != this.enabled) {
+            GLStateManager.beforeUncapturedTextureUnitChange(glCap, unitIndex);
+            beforeModify();
+        }
+        setEnabledWithUnitSwitch(enabled);
+    }
+
+    @Override
+    public void restoreSlot(int slot) {
+        setEnabledWithUnitSwitch(stack[slot]);
+    }
+
+    private void setEnabledWithUnitSwitch(boolean enabled) {
+        final boolean bypass = GLStateManager.shouldBypassCache();
+        if (bypass || enabled != this.enabled) {
+            if (!bypass) this.enabled = enabled;
+
+            if (!ffpStateOnly) {
+                final int currentUnit = GLStateManager.getActiveTextureUnit();
+                final boolean needsSwitch = currentUnit != unitIndex;
+
+                if (needsSwitch) BackendManager.RENDER_BACKEND.activeTexture(GL13.GL_TEXTURE0 + unitIndex);
+                if (enabled) BackendManager.RENDER_BACKEND.enable(glCap); else BackendManager.RENDER_BACKEND.disable(glCap);
+                if (needsSwitch) BackendManager.RENDER_BACKEND.activeTexture(GL13.GL_TEXTURE0 + currentUnit);
+            }
+        }
+    }
+
+    public int getUnitIndex() {
+        return unitIndex;
+    }
+}

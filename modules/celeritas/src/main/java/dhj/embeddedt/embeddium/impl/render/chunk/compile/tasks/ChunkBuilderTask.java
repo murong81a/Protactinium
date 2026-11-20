@@ -1,0 +1,37 @@
+package dhj.embeddedt.embeddium.impl.render.chunk.compile.tasks;
+
+import dhj.embeddedt.embeddium.impl.render.chunk.compile.ChunkBuildContext;
+import dhj.embeddedt.embeddium.impl.util.task.CancellationToken;
+
+/**
+ * Build tasks are immutable jobs (with optional prioritization) which contain all the necessary state to perform
+ * chunk mesh updates or quad sorting off the main thread.
+ *
+ * When a task is constructed on the main thread, it should copy all the state it requires in order to complete the task
+ * without further synchronization. The task will then be scheduled for async execution on a thread pool.
+ *
+ * After the task completes, it returns a "build result" which contains any computed data that needs to be handled
+ * on the main thread.
+ */
+public abstract class ChunkBuilderTask<OUTPUT> {
+    /**
+     * Executes the given build task asynchronously from the calling thread. The implementation should be careful not
+     * to access or modify global mutable state.
+     *
+     * @return null if the task was cancelled
+     */
+    public abstract OUTPUT execute(ChunkBuildContext context, CancellationToken cancellationToken);
+
+    /**
+     * Releases the state this task acquired on the render thread before it was queued, for a job the executor
+     * cancelled before it could start. Such a job never reaches {@link #execute(ChunkBuildContext, CancellationToken)},
+     * so the task still owns that state: a chunk build holds the section snapshot of its
+     * {@code ChunkRenderContext} until the slice copies it.
+     *
+     * <p>Called exactly once by the job executor, right before it delivers the cancelled result. A task that did start
+     * owns its state through {@link #execute(ChunkBuildContext, CancellationToken)}, including the paths where it
+     * reports a cancellation itself, so the default implementation releases nothing.</p>
+     */
+    public void releaseUnstartedContext() {
+    }
+}

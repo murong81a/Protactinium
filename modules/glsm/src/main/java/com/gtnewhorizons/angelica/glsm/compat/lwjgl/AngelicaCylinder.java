@@ -1,0 +1,144 @@
+package com.gtnewhorizons.angelica.glsm.compat.lwjgl;
+
+import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import org.lwjgl.util.glu.Cylinder;
+
+import static org.lwjgl.opengl.GL11.GL_LINES;
+import static org.lwjgl.opengl.GL11.GL_LINE_LOOP;
+import static org.lwjgl.opengl.GL11.GL_POINTS;
+import static org.lwjgl.opengl.GL11.GL_TRIANGLE_STRIP;
+import static org.lwjgl.util.glu.GLU.GLU_FILL;
+import static org.lwjgl.util.glu.GLU.GLU_INSIDE;
+import static org.lwjgl.util.glu.GLU.GLU_LINE;
+import static org.lwjgl.util.glu.GLU.GLU_POINT;
+import static org.lwjgl.util.glu.GLU.GLU_SILHOUETTE;
+import com.gtnewhorizons.angelica.glsm.GLSMCurrentAttribs;
+import com.gtnewhorizons.angelica.glsm.GLSMDraws;
+
+@SuppressWarnings("unused")
+public class AngelicaCylinder extends Cylinder {
+
+    private static final float PI = (float) Math.PI;
+
+    private void emitNormal(float x, float y, float z) {
+        float mag = (float) Math.sqrt(x * x + y * y + z * z);
+        if (mag > 0.00001F) {
+            x /= mag;
+            y /= mag;
+            z /= mag;
+        }
+        GLSMCurrentAttribs.glNormal3f(x, y, z);
+    }
+
+    private void emitTexCoord(float x, float y) {
+        if (super.getTextureFlag()) {
+            GLSMCurrentAttribs.glTexCoord2f(x, y);
+        }
+    }
+
+    @Override
+    public void draw(float baseRadius, float topRadius, float height, int slices, int stacks) {
+        float da;
+        float dr;
+        float dz;
+        float nz;
+        float nsign;
+        float r;
+        float x;
+        float y;
+        float z;
+
+        nsign = super.getOrientation() == GLU_INSIDE ? -1.0f : 1.0f;
+        da = 2.0f * PI / slices;
+        dr = (topRadius - baseRadius) / stacks;
+        dz = height / stacks;
+        nz = (baseRadius - topRadius) / height;
+
+        if (super.getDrawStyle() == GLU_POINT) {
+            GLSMDraws.glBegin(GL_POINTS);
+            for (int i = 0; i < slices; i++) {
+                x = (float) Math.cos(i * da);
+                y = (float) Math.sin(i * da);
+                emitNormal(x * nsign, y * nsign, nz * nsign);
+                z = 0.0f;
+                r = baseRadius;
+                for (int j = 0; j <= stacks; j++) {
+                    GLSMDraws.glVertex3f(x * r, y * r, z);
+                    z += dz;
+                    r += dr;
+                }
+            }
+            GLSMDraws.glEnd();
+        } else if (super.getDrawStyle() == GLU_LINE || super.getDrawStyle() == GLU_SILHOUETTE) {
+            if (super.getDrawStyle() == GLU_LINE) {
+                z = 0.0f;
+                r = baseRadius;
+                for (int j = 0; j <= stacks; j++) {
+                    GLSMDraws.glBegin(GL_LINE_LOOP);
+                    for (int i = 0; i < slices; i++) {
+                        x = (float) Math.cos(i * da);
+                        y = (float) Math.sin(i * da);
+                        emitNormal(x * nsign, y * nsign, nz * nsign);
+                        GLSMDraws.glVertex3f(x * r, y * r, z);
+                    }
+                    GLSMDraws.glEnd();
+                    z += dz;
+                    r += dr;
+                }
+            } else if (baseRadius != 0.0f) {
+                GLSMDraws.glBegin(GL_LINE_LOOP);
+                for (int i = 0; i < slices; i++) {
+                    x = (float) Math.cos(i * da);
+                    y = (float) Math.sin(i * da);
+                    emitNormal(x * nsign, y * nsign, nz * nsign);
+                    GLSMDraws.glVertex3f(x * baseRadius, y * baseRadius, 0.0f);
+                }
+                GLSMDraws.glEnd();
+                GLSMDraws.glBegin(GL_LINE_LOOP);
+                for (int i = 0; i < slices; i++) {
+                    x = (float) Math.cos(i * da);
+                    y = (float) Math.sin(i * da);
+                    emitNormal(x * nsign, y * nsign, nz * nsign);
+                    GLSMDraws.glVertex3f(x * topRadius, y * topRadius, height);
+                }
+                GLSMDraws.glEnd();
+            }
+
+            GLSMDraws.glBegin(GL_LINES);
+            for (int i = 0; i < slices; i++) {
+                x = (float) Math.cos(i * da);
+                y = (float) Math.sin(i * da);
+                emitNormal(x * nsign, y * nsign, nz * nsign);
+                GLSMDraws.glVertex3f(x * baseRadius, y * baseRadius, 0.0f);
+                GLSMDraws.glVertex3f(x * topRadius, y * topRadius, height);
+            }
+            GLSMDraws.glEnd();
+        } else if (super.getDrawStyle() == GLU_FILL) {
+            float ds = 1.0f / slices;
+            float dt = 1.0f / stacks;
+            float t = 0.0f;
+            z = 0.0f;
+            r = baseRadius;
+            for (int j = 0; j < stacks; j++) {
+                float s = 0.0f;
+                GLSMDraws.glBegin(GL_TRIANGLE_STRIP);
+                for (int i = 0; i <= slices; i++) {
+                    float angle = i == slices ? 0.0f : i * da;
+                    x = (float) Math.sin(angle);
+                    y = (float) Math.cos(angle);
+                    emitNormal(x * nsign, y * nsign, nz * nsign);
+                    emitTexCoord(s, t);
+                    GLSMDraws.glVertex3f(x * r, y * r, z);
+                    emitNormal(x * nsign, y * nsign, nz * nsign);
+                    emitTexCoord(s, t + dt);
+                    GLSMDraws.glVertex3f(x * (r + dr), y * (r + dr), z + dz);
+                    s += ds;
+                }
+                GLSMDraws.glEnd();
+                r += dr;
+                t += dt;
+                z += dz;
+            }
+        }
+    }
+}

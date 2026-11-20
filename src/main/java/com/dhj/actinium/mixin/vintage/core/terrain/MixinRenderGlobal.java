@@ -1,0 +1,523 @@
+package com.dhj.actinium.mixin.vintage.core.terrain;
+
+import com.llamalad7.mixinextras.sugar.Local;
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.dhj.actinium.compat.ichunutil.PortalViewportProvider;
+import com.dhj.actinium.debug.GlStateDiffProbe;
+import com.dhj.actinium.render.BoundingBoxOutline;
+import com.dhj.actinium.render.ManagedCodeBoundary;
+import net.coderbot.iris.compat.rfp2.Rfp2Compat;
+import com.gtnewhorizons.angelica.glsm.shadow.InternalShadowRenderingState;
+import com.dhj.actinium.shadows.ShadowRenderingState;
+import com.gtnewhorizons.angelica.compat.mojang.Camera;
+import com.gtnewhorizons.angelica.rendering.DeferredEntityOverlay;
+import com.gtnewhorizons.angelica.rendering.tesr.EntityShadowReplay;
+import com.gtnewhorizons.angelica.rendering.tesr.ModelPartBatcher;
+import com.gtnewhorizons.angelica.rendering.tesr.TesrBatchRenderer;
+import net.coderbot.iris.Iris;
+import net.coderbot.iris.gl.framebuffer.MinecraftFramebufferHelper;
+import net.coderbot.iris.layer.GbufferPrograms;
+import net.coderbot.iris.apiimpl.IrisApiV0Impl;
+import net.coderbot.iris.pipeline.HandRenderer;
+import net.coderbot.iris.pipeline.WorldRenderingPhase;
+import net.coderbot.iris.pipeline.WorldRenderingPipeline;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.entity.EntityPlayerSP;
+import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.client.renderer.*;
+import net.minecraft.client.renderer.chunk.ChunkRenderDispatcher;
+import net.minecraft.client.renderer.culling.ICamera;
+import net.minecraft.client.renderer.entity.RenderManager;
+import net.minecraft.client.renderer.tileentity.TileEntityRendererDispatcher;
+import net.minecraft.client.settings.GameSettings;
+import net.minecraftforge.client.MinecraftForgeClient;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.BlockRenderLayer;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.MathHelper;
+import dhj.embeddedt.embeddium.impl.render.terrain.SimpleWorldRenderer;
+import dhj.embeddedt.embeddium.impl.render.viewport.ViewportProvider;
+import org.spongepowered.asm.mixin.Final;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Overwrite;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import dhj.embeddedt.embeddium.api.debug.RenderDebugHooksHolder;
+import com.dhj.actinium.render.entity.EntityGatherer;
+import com.dhj.actinium.render.terrain.ActiniumWorldRenderer;
+import com.dhj.actinium.render.terrain.LeafRenderQuality;
+import com.dhj.actinium.render.terrain.TileEntityGlStateGuard;
+import com.dhj.actinium.runtime.ActiniumRuntime;
+
+import java.util.*;
+
+@Mixin(RenderGlobal.class)
+public abstract class MixinRenderGlobal implements SimpleWorldRenderer.Provider<ActiniumWorldRenderer> {
+
+    /** Removes the strip connectors that become visible under smooth shader interpolation. */
+    @Inject(method = "drawBoundingBox(DDDDDDFFFF)V", at = @At("HEAD"), cancellable = true)
+    private static void actinium$drawIndependentBoundingBoxEdges(
+        double minX, double minY, double minZ, double maxX, double maxY, double maxZ,
+        float red, float green, float blue, float alpha, CallbackInfo ci
+    ) {
+        Tessellator tessellator = Tessellator.getInstance();
+        BoundingBoxOutline.build(tessellator.getBuffer(), minX, minY, minZ, maxX, maxY, maxZ,
+            red, green, blue, alpha);
+        tessellator.draw();
+        ci.cancel();
+    }
+
+    @Shadow(remap = false)
+    @Final
+    private Map<Integer, DestroyBlockProgress> field_72738_E;
+
+    @Shadow(remap = false) @Final private Minecraft field_72777_q;
+    @Shadow(remap = false)
+    @Final
+    private RenderManager field_175010_j;
+    @Shadow(remap = false)
+    private int field_72749_I;
+
+    @Shadow(remap = false)
+    protected abstract boolean func_184383_a(Entity entityIn, Entity viewer, ICamera camera);
+
+    /**
+     * Vanilla's single-argument overload. It is deliberately left unmodified and invoked from the
+     * overwritten entry point below, so injections anchored inside it stay reachable.
+     */
+    @Shadow(remap = false)
+    private void func_174982_a(BlockRenderLayer blockLayerIn) {
+        throw new AssertionError();
+    }
+
+    @Shadow(remap = false)
+    private WorldClient field_72769_h;
+    @Shadow(remap = false)
+    @Final
+    private Set<TileEntity> field_181024_n;
+    private ActiniumWorldRenderer renderer;
+
+    @Redirect(method = "loadRenderers", at = @At(value = "FIELD", target = "Lnet/minecraft/client/settings/GameSettings;renderDistanceChunks:I", ordinal = 1))
+    private int nullifyBuiltChunkStorage(GameSettings settings) {
+        // Do not allow any resources to be allocated
+        return 0;
+    }
+
+    @Inject(method = "<init>", at = @At("RETURN"))
+    private void init(Minecraft minecraft, CallbackInfo ci) {
+        this.renderer = new ActiniumWorldRenderer();
+    }
+
+    @Override
+    public ActiniumWorldRenderer celeritas$getWorldRenderer() {
+        return this.renderer;
+    }
+
+    @Inject(method = "setWorldAndLoadRenderers", at = @At("RETURN"))
+    private void onWorldChanged(WorldClient field_72769_h, CallbackInfo ci) {
+        ManagedCodeBoundary.enter();
+
+        try {
+            this.renderer.setWorld(field_72769_h);
+        } finally {
+            ManagedCodeBoundary.exit();
+        }
+    }
+
+    /**
+     * @reason Redirect to our renderer
+     * @author JellySquid
+     */
+    @Overwrite(remap = false)
+    public int func_184382_g() {
+        return this.renderer.getVisibleChunkCount();
+    }
+
+    /**
+     * @reason Redirect the check to our renderer
+     * @author JellySquid
+     */
+    @Overwrite(remap = false)
+    public boolean func_184384_n() {
+        return this.renderer.isTerrainRenderComplete();
+    }
+
+    @Inject(method = "setDisplayListEntitiesDirty", at = @At("RETURN"))
+    private void onTerrainUpdateScheduled(CallbackInfo ci) {
+        this.renderer.scheduleTerrainUpdate();
+    }
+
+    /**
+     * @reason Redirect the chunk layer render passes to our renderer. The four-argument entry point is
+     * overwritten, while the single-argument overload it normally calls is left vanilla and invoked
+     * below, so injections anchored inside that overload keep firing. Overwriting the overload itself
+     * would break them: Mixin refuses instruction-level injection points in a method that a
+     * higher-priority mixin has already merged.
+     * @author JellySquid
+     */
+    @Overwrite(remap = false)
+    public int func_174977_a(BlockRenderLayer blockLayerIn, double partialTicks, int pass, Entity entityIn) {
+        WorldRenderingPipeline pipeline = null;
+        if (Iris.enabled) {
+            pipeline = Iris.getPipelineManager().getPipelineNullable();
+            if (pipeline != null) {
+                if (blockLayerIn == BlockRenderLayer.SOLID) {
+                    pipeline.setPhase(WorldRenderingPhase.TERRAIN_SOLID);
+                } else if (blockLayerIn == BlockRenderLayer.CUTOUT_MIPPED) {
+                    pipeline.setPhase(WorldRenderingPhase.TERRAIN_CUTOUT_MIPPED);
+                } else if (blockLayerIn == BlockRenderLayer.CUTOUT) {
+                    pipeline.setPhase(WorldRenderingPhase.TERRAIN_CUTOUT);
+                } else if (blockLayerIn == BlockRenderLayer.TRANSLUCENT) {
+                    if (!ShadowRenderingState.areShadowsCurrentlyBeingRendered()
+                            && IrisApiV0Impl.INSTANCE.isShaderPackInUse()) {
+                        this.actinium$beginIrisTranslucents(pipeline, (float) partialTicks);
+                    }
+                    pipeline.setPhase(WorldRenderingPhase.TERRAIN_TRANSLUCENT);
+                }
+            }
+        }
+        ManagedCodeBoundary.enter();
+
+        RenderHelper.disableStandardItemLighting();
+
+        GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
+        GlStateManager.bindTexture(this.field_72777_q.getTextureMapBlocks().getGlTextureId());
+        GlStateManager.enableTexture2D();
+
+        GlStateDiffProbe.Snapshot beforeDhInjection = null;
+        GlStateDiffProbe.Snapshot afterDhInjection = null;
+        if (blockLayerIn == BlockRenderLayer.TRANSLUCENT) {
+            // Run vanilla's overload so third-party injections anchored inside it stay reachable (its
+            // enableLightmap call is one such anchor). Its renderContainer pass draws nothing, since
+            // Celeritas owns chunk rendering and never populates that container.
+            // Distant Horizons anchors its deferred transparent LOD pass inside that overload, so the
+            // state is sampled across it: a difference here belongs to DH, one across the draw below
+            // belongs to Celeritas. Both captures are no-ops while the GL debug option is off.
+            beforeDhInjection = GlStateDiffProbe.capture();
+            this.func_174982_a(blockLayerIn);
+            afterDhInjection = GlStateDiffProbe.capture();
+        }
+
+        this.field_72777_q.entityRenderer.enableLightmap();
+
+        double d3 = entityIn.lastTickPosX + (entityIn.posX - entityIn.lastTickPosX) * partialTicks;
+        double d4 = entityIn.lastTickPosY + (entityIn.posY - entityIn.lastTickPosY) * partialTicks + entityIn.getEyeHeight();
+        double d5 = entityIn.lastTickPosZ + (entityIn.posZ - entityIn.lastTickPosZ) * partialTicks;
+
+        long drawStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
+        GlStateDiffProbe.Snapshot beforeTerrainDraw = GlStateDiffProbe.capture();
+        try {
+            this.renderer.drawChunkLayer(blockLayerIn, d3, d4, d5);
+        } finally {
+            String layerName = blockLayerIn.name().toLowerCase(Locale.ROOT);
+            GlStateDiffProbe.diffAndPrint("dh-injection-" + layerName + "-pass" + pass, beforeDhInjection, afterDhInjection);
+            GlStateDiffProbe.diffAndPrint("celeritas-draw-" + layerName + "-pass" + pass, beforeTerrainDraw, GlStateDiffProbe.capture());
+            RenderDebugHooksHolder.recordRenderGlobalStageTiming("terrain-" + layerName, pass, drawStartNanos);
+            ManagedCodeBoundary.exit();
+        }
+
+        this.field_72777_q.entityRenderer.disableLightmap();
+        GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
+
+        if (pipeline != null) {
+            pipeline.setPhase(WorldRenderingPhase.NONE);
+        }
+
+        return 1;
+    }
+
+    /**
+     * @reason Redirect the terrain setup phase to our renderer
+     * @author JellySquid
+     */
+    @WrapMethod(method = "func_174970_a")
+    private void actinium$setupTerrain(
+        Entity entity,
+        double tick,
+        ICamera camera,
+        int frame,
+        boolean spectator,
+        Operation<Void> original
+    ) {
+        boolean portalCamera = camera instanceof PortalViewportProvider;
+        if (portalCamera) {
+            original.call(entity, tick, camera, frame, spectator);
+        }
+
+        ManagedCodeBoundary.enter();
+
+        try {
+            this.renderer.setPortalCamera(portalCamera);
+            this.renderer.setupTerrain(((ViewportProvider)camera).sodium$createViewport(), ActiniumWorldRenderer.captureCameraState(entity, tick),
+                    frame, spectator, false);
+        } finally {
+            ManagedCodeBoundary.exit();
+        }
+    }
+
+    /**
+     * @reason Redirect chunk updates to our renderer
+     * @author JellySquid
+     */
+    @Overwrite(remap = false)
+    public void func_184385_a(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, boolean important) {
+        this.renderer.scheduleRebuildForBlockArea(minX, minY, minZ, maxX, maxY, maxZ, important);
+    }
+
+    // The following two redirects force light updates to trigger chunk updates and not check vanilla's chunk renderer
+    // flags
+    @Redirect(method = "updateClouds", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/chunk/ChunkRenderDispatcher;func_188248_h()Z"))
+    private boolean alwaysHaveBuilders(ChunkRenderDispatcher instance) {
+        return false;
+    }
+
+    @Redirect(method = "updateClouds", at = @At(value = "INVOKE", target = "Ljava/util/Set;isEmpty()Z", ordinal = 1))
+    private boolean alwaysHaveNoTasks(Set instance) {
+        return true;
+    }
+
+    @Inject(method = "loadRenderers", at = @At("HEAD"))
+    private void actinium$takeOverGraphicsQuality(CallbackInfo ci) {
+        LeafRenderQuality.pinFancyGraphics(this.field_72777_q.gameSettings);
+    }
+
+    @Inject(method = "loadRenderers", at = @At("RETURN"))
+    private void onReload(CallbackInfo ci) {
+        ManagedCodeBoundary.enter();
+
+        try {
+            LeafRenderQuality.apply(ActiniumRuntime.options().quality.leavesQuality, this.field_72777_q.gameSettings.fancyGraphics);
+            this.renderer.reload();
+        } finally {
+            ManagedCodeBoundary.exit();
+        }
+    }
+
+    @Inject(method = "func_180446_a", at = @At("HEAD"))
+    private void actinium$clearDeferredOverlays(Entity entityIn, ICamera camera, float partialTicks, CallbackInfo ci) {
+        // renderEntities runs once per Forge render pass; every pass has to start empty so pass 1 does
+        // not replay the entries pass 0 already drew.
+        if (MinecraftForgeClient.getRenderPass() == 0) {
+            DeferredEntityOverlay.clear();
+        }
+    }
+
+    @Inject(method = "func_180446_a", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/RenderHelper;func_74519_b()V", shift = At.Shift.AFTER, ordinal = 1), cancellable = true)
+    public void sodium$renderTileEntities(Entity entity, ICamera camera, float partialTicks, CallbackInfo ci) {
+        int pass = MinecraftForgeClient.getRenderPass();
+        boolean renderShadowBlockEntities = !ShadowRenderingState.areShadowsCurrentlyBeingRendered()
+                || InternalShadowRenderingState.shouldRenderShadowBlockEntities();
+
+        // The deferred overlay auras are captured during the entity loop above and replayed here, after
+        // every entity and before the block entities, so they composite over all opaque geometry.
+        DeferredEntityOverlay.renderAll();
+
+        if (renderShadowBlockEntities) {
+            long blockEntityStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
+            if (Iris.enabled) {
+                GbufferPrograms.beginBlockEntities();
+                GbufferPrograms.setBlockEntityDefaults();
+            }
+            this.renderer.renderBlockEntities(new ActiniumWorldRenderer.TileEntityRenderContext(field_72738_E, partialTicks));
+            if (Iris.enabled) {
+                GbufferPrograms.endBlockEntities();
+            }
+            RenderDebugHooksHolder.recordRenderGlobalStageTiming("block-entities-main", pass, blockEntityStartNanos);
+        }
+
+        /*
+         * Normally, field_181024_n will be empty because we suppress vanilla chunk rendering. However, some mods
+         * inject a custom renderer into the set. So we render any TE we find in it.
+         * https://github.com/pau101/Fairy-Lights/blob/8a92f770d69be6fa164d24d7a023d828249423bb/src/main/java/com/pau101/fairylights/client/ClientProxy.java#L203
+         */
+        if (renderShadowBlockEntities) {
+            synchronized(this.field_181024_n) {
+                if (!this.field_181024_n.isEmpty()) {
+                    long setBlockEntityStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
+                    TileEntityGlStateGuard.push();
+                    try {
+                        TileEntityRendererDispatcher.instance.preDrawBatch();
+                        try {
+                            for (var te : this.field_181024_n) {
+                                if (te.shouldRenderInPass(pass)) {
+                                    TileEntityRendererDispatcher.instance.renderTileEntity(te, partialTicks, -1);
+                                }
+                            }
+                        } finally {
+                            // Same leak guard as ActiniumWorldRenderer.renderBlockEntities.
+                            TileEntityGlStateGuard.restoreForBatch();
+                            TileEntityRendererDispatcher.instance.drawBatch(pass);
+                        }
+                    } finally {
+                        TileEntityGlStateGuard.pop();
+                    }
+                    RenderDebugHooksHolder.recordRenderGlobalStageTiming("block-entities-set", pass, setBlockEntityStartNanos);
+                }
+            }
+        }
+
+        this.field_72777_q.entityRenderer.disableLightmap();
+        this.field_72777_q.mcProfiler.endSection();
+        ci.cancel();
+    }
+
+    private void actinium$beginIrisTranslucents(WorldRenderingPipeline pipeline, float partialTicks) {
+        MinecraftFramebufferHelper.restoreMinecraftFramebufferBuffers();
+        RenderDebugHooksHolder.logWorldPassState("before-begin-hand", pipeline.getPhase().name(), "translucent-prelude");
+        pipeline.beginHand();
+        RenderDebugHooksHolder.logWorldPassState("after-begin-hand", pipeline.getPhase().name(), "translucent-prelude");
+        HandRenderer.INSTANCE.renderSolid(partialTicks, Camera.INSTANCE, this.field_72777_q.renderGlobal, pipeline);
+        RenderDebugHooksHolder.logWorldPassState("after-hand-solid", pipeline.getPhase().name(), "translucent-prelude");
+        this.field_72777_q.mcProfiler.endStartSection("iris_pre_translucent");
+        pipeline.beginTranslucents();
+        // Deferred programs bind a different program per pass, so the entity and block entity batches
+        // held back until after the deferred pass have to flush under the translucent program.
+        ModelPartBatcher.INSTANCE.flushEntitiesAfterDeferred();
+        TesrBatchRenderer.INSTANCE.flushAfterDeferred();
+        RenderDebugHooksHolder.logWorldPassState("after-begin-translucents", pipeline.getPhase().name(), "translucent-prelude");
+    }
+
+    /**
+     * @reason Replace the debug string
+     * @author JellySquid
+     */
+    @Overwrite(remap = false)
+    public String func_72735_c() {
+        return this.renderer.getChunksDebugString();
+    }
+
+    private final EntityGatherer celeritas$entityGatherer = new EntityGatherer();
+
+    private List<Entity>[] celeritas$collectedEntities;
+
+    /**
+     * @author embeddedt
+     * @reason reimplement entity render loop because vanilla's relies on the renderInfos list
+     */
+    @Inject(method = "func_180446_a", at = @At(value = "FIELD", target = "Lnet/minecraft/client/renderer/RenderGlobal;renderInfos:Ljava/util/List;", ordinal = 0))
+    private void renderEntities(Entity renderViewEntity, ICamera camera, float partialTicks, CallbackInfo ci,
+                                @Local(ordinal = 1) List<Entity> outlineEntityList,
+                                @Local(ordinal = 2) List<Entity> multipassEntityList) {
+        int pass = MinecraftForgeClient.getRenderPass();
+        double renderViewX = renderViewEntity.prevPosX + (renderViewEntity.posX - renderViewEntity.prevPosX) * partialTicks;
+        double renderViewY = renderViewEntity.prevPosY + (renderViewEntity.posY - renderViewEntity.prevPosY) * partialTicks;
+        double renderViewZ = renderViewEntity.prevPosZ + (renderViewEntity.posZ - renderViewEntity.prevPosZ) * partialTicks;
+        if (pass == 0 || celeritas$collectedEntities == null) {
+            celeritas$entityGatherer.clear();
+            celeritas$collectedEntities = celeritas$entityGatherer.getLoadedEntityList(field_72769_h);
+        }
+        EntityPlayerSP player = this.field_72777_q.player;
+        BlockPos.MutableBlockPos entityBlockPos = new BlockPos.MutableBlockPos();
+        ActiniumWorldRenderer worldRenderer = ActiniumWorldRenderer.instance();
+        Entity.setRenderDistanceWeight(MathHelper.clamp((double)this.field_72777_q.gameSettings.renderDistanceChunks / 8.0D, 1.0D, 2.5D) * 1);
+        boolean irisEntities = Iris.enabled && IrisApiV0Impl.INSTANCE.isShaderPackInUse();
+        GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
+        GlStateManager.enableTexture2D();
+        // The batch has to know it is inside the entity loop so it flushes per entity instead of
+        // wrapping the whole loop in one entity program.
+        ModelPartBatcher.INSTANCE.begin(ModelPartBatcher.Mode.ENTITIES);
+        GbufferPrograms.beginEntityLoop();
+        long entitiesStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
+        long renderCallNanos = 0L;
+        int checkedEntities = 0;
+        int visibleEntities = 0;
+        int renderedEntities = 0;
+        int outlinedEntities = 0;
+        int multipassEntities = 0;
+        try {
+            for(Entity entity : celeritas$collectedEntities[pass]) {
+                checkedEntities++;
+                if (!this.actinium$shouldRenderShadowEntity(entity, renderViewEntity)) {
+                    continue;
+                }
+
+                if(!this.field_175010_j.shouldRender(entity, camera, renderViewX, renderViewY, renderViewZ) && !entity.isRidingOrBeingRiddenBy(player)) {
+                    continue;
+                }
+
+                if(!worldRenderer.isEntityVisible(entity)) {
+                    continue;
+                }
+                visibleEntities++;
+
+                boolean isSleeping = renderViewEntity instanceof EntityLivingBase && ((EntityLivingBase) renderViewEntity).isPlayerSleeping();
+
+                if ((entity != renderViewEntity || this.field_72777_q.gameSettings.thirdPersonView != 0 || isSleeping)
+                        && (entity.posY < 0.0D || entity.posY >= 256.0D || this.field_72769_h.isBlockLoaded(entityBlockPos.setPos(entity))))
+                {
+                    ++this.field_72749_I;
+                    long renderCallStartNanos = RenderDebugHooksHolder.beginRenderGlobalStageTiming();
+                    if (!EntityShadowReplay.replay(this.field_175010_j, entity, partialTicks, pass)) {
+                        this.field_175010_j.renderEntityStatic(entity, partialTicks, false);
+                    }
+                    if (renderCallStartNanos != 0L) {
+                        renderCallNanos += System.nanoTime() - renderCallStartNanos;
+                    }
+                    renderedEntities++;
+
+                    if (this.func_184383_a(entity, renderViewEntity, camera))
+                    {
+                        outlineEntityList.add(entity);
+                        outlinedEntities++;
+                    }
+
+                    if (this.field_175010_j.isRenderMultipass(entity)) {
+                        multipassEntityList.add(entity);
+                        multipassEntities++;
+                    }
+                }
+            }
+        } finally {
+            GbufferPrograms.endEntityLoop();
+            ModelPartBatcher.INSTANCE.flush();
+            RenderDebugHooksHolder.recordRenderGlobalStageTiming("entities", pass, entitiesStartNanos);
+            RenderDebugHooksHolder.recordRenderGlobalCounterTiming(
+                    "entities-loop-total",
+                    pass,
+                    entitiesStartNanos == 0L ? 0L : System.nanoTime() - entitiesStartNanos,
+                    checkedEntities,
+                    visibleEntities,
+                    renderedEntities,
+                    outlinedEntities,
+                    multipassEntities
+            );
+            RenderDebugHooksHolder.recordRenderGlobalCounterTiming(
+                    "entities-render-call",
+                    pass,
+                    renderCallNanos,
+                    checkedEntities,
+                    visibleEntities,
+                    renderedEntities,
+                    outlinedEntities,
+                    multipassEntities
+            );
+        }
+    }
+
+    private boolean actinium$shouldRenderShadowEntity(Entity entity, Entity renderViewEntity) {
+        if (!ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
+            return true;
+        }
+        if (Rfp2Compat.isPlayerDummy(entity)) {
+            return false;
+        }
+
+        boolean renderEntities = InternalShadowRenderingState.shouldRenderShadowEntities();
+        boolean renderPlayer = InternalShadowRenderingState.shouldRenderShadowPlayer();
+        boolean playerEntity = entity == renderViewEntity
+                || (this.field_72777_q.player != null && entity.isRidingOrBeingRiddenBy(this.field_72777_q.player));
+
+        if (!renderEntities) {
+            return renderPlayer && playerEntity;
+        }
+
+        return renderPlayer || !playerEntity;
+    }
+}
+

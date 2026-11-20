@@ -1,0 +1,38 @@
+package net.coderbot.iris.uniforms;
+
+import net.minecraft.block.Block;
+import net.minecraft.item.ItemStack;
+
+/**
+ * Helper class to manage the currentRenderedItem ID uniform.
+ */
+public class ItemIdManager {
+    /**
+     * Set the item ID for an armor piece or held item.
+     * If the ItemStack is null/empty, resets to 0.
+     * Otherwise, looks up the material ID and sets it.
+     */
+    public static void setItemId(ItemStack itemStack) {
+        if (itemStack == null || itemStack.getItem() == null) {
+            resetItemId();
+            return;
+        }
+
+        CapturedRenderingState.INSTANCE.setCurrentRenderedItem(itemStack);
+    }
+
+    /**
+     * Set the item ID for a block rendered outside of terrain.
+     */
+    public static void setBlockId(Block block, int metadata) {
+        CapturedRenderingState.INSTANCE.setCurrentRenderedBlockItem(block, metadata);
+    }
+
+    /**
+     * Reset the item ID to 0.
+     * Used when entering/exiting render sections or before glint rendering.
+     */
+    public static void resetItemId() {
+        CapturedRenderingState.INSTANCE.setCurrentRenderedItem(0);
+    }
+}

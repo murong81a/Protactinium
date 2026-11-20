@@ -1,0 +1,343 @@
+package com.dhj.actinium;
+
+import com.dhj.actinium.compat.chunkanimator.ChunkAnimatorCompat;
+import com.dhj.actinium.compat.glsm.VanillaTextureMirrorCompat;
+import com.dhj.actinium.compat.MissingModelCompat;
+import com.dhj.actinium.compat.kirino.KirinoCompat;
+import com.dhj.actinium.compat.neofontrender.NeoFontRenderCompat;
+import com.dhj.actinium.compat.neverenoughanimations.NeverEnoughAnimationsAlphaOverride;
+import com.dhj.actinium.command.TogglePassCommand;
+import com.dhj.actinium.config.ActiniumConfig;
+import com.dhj.actinium.config.ActiniumRuntimeOptions;
+import com.dhj.actinium.debug.ActiniumDiagnostics;
+import com.dhj.actinium.hud.runtime.PerformanceIndicators;
+import com.dhj.actinium.mixin.vintage.core.terrain.AccessorEntityRenderer;
+import com.dhj.actinium.render.CloudRenderer;
+import com.dhj.actinium.render.FastLitItemDisplayListCache;
+import com.dhj.actinium.render.fps.FpsReducer;
+import com.dhj.actinium.render.terrain.ActiniumWorldRenderer;
+import com.dhj.actinium.render.terrain.GpuCullingSettings;
+import com.dhj.actinium.runtime.ActiniumRuntime;
+import com.dhj.actinium.startup.SdlGpuBootstrap;
+import com.gtnewhorizons.angelica.proxy.ClientProxy;
+import com.gtnewhorizons.angelica.config.AngelicaConfig;
+import com.gtnewhorizons.angelica.rendering.tesr.AngelicaTesrMeshCache;
+import com.gtnewhorizons.angelica.rendering.tesr.EntityTextureAtlas;
+import com.gtnewhorizons.angelica.rendering.tesr.TesrLifecycle;
+import com.gtnewhorizon.gtnhlib.compat.Mods;
+import net.coderbot.iris.celeritas.WorldRendererCompatBridge;
+import net.coderbot.iris.debug.IrisDebugOptions;
+import net.coderbot.iris.pipeline.InstancingSupportProvider;
+import net.coderbot.iris.uniforms.CloudAnimationCycle;
+import com.gtnewhorizon.gtnhlib.client.renderer.RuntimeOptionsBridge;
+import com.gtnewhorizon.gtnhlib.client.renderer.postprocessing.PostProcessingBridge;
+import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebug;
+import com.gtnewhorizons.angelica.glsm.debug.GLSMPerfDebugHooks;
+import com.gtnewhorizons.angelica.glsm.compat.FogDistanceModeBridge;
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMConfig;
+import com.gtnewhorizons.angelica.glsm.hooks.GLSMHooks;
+import com.gtnewhorizons.angelica.iris.IrisGLSMBridge;
+import com.gtnewhorizons.angelica.iris.ShaderWarmup;
+import net.minecraft.util.text.TextFormatting;
+import net.coderbot.iris.Iris;
+import net.coderbot.iris.pipeline.AdaptiveShadowBoundsStats;
+import net.coderbot.iris.compat.dh.DHCompat;
+import net.coderbot.iris.rendertarget.IRenderTargetExt;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiMainMenu;
+import net.minecraft.client.resources.IReloadableResourceManager;
+import net.minecraft.launchwrapper.Launch;
+import net.minecraftforge.client.ClientCommandHandler;
+import net.minecraftforge.client.event.GuiOpenEvent;
+import net.minecraftforge.client.event.RenderGameOverlayEvent;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.fml.common.Loader;
+import net.minecraftforge.event.world.WorldEvent;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.common.Mod.EventHandler;
+import net.minecraftforge.fml.common.event.FMLConstructionEvent;
+import net.minecraftforge.fml.common.event.FMLInitializationEvent;
+import net.minecraftforge.fml.common.eventhandler.EventPriority;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
+import dhj.embeddedt.embeddium.impl.common.util.MathUtil;
+import dhj.embeddedt.embeddium.impl.common.util.NativeBuffer;
+import dhj.embeddedt.embeddium.impl.gui.SodiumGameOptions;
+import dhj.embeddedt.embeddium.impl.runtime.EmbeddiumRuntimeOptions;
+import java.io.IOException;
+import java.lang.management.ManagementFactory;
+
+@Mod(modid =
+        Actinium.MODID,
+        useMetadata = true,
+        clientSideOnly = true,
+        acceptableRemoteVersions = "*",
+        guiFactory = "com.dhj.actinium.gui.ActiniumGuiFactory",
+        dependencies = "required-after:mixinbooter"
+)
+public class Actinium {
+    public static final String MODID = ActiniumRuntime.MODID;
+
+    private boolean titleScreenOpened;
+
+    @EventHandler
+    public void onConstruct(FMLConstructionEvent event) {
+        GLSMConfig.workerThreadCount = ActiniumConfig.workerThreadCount;
+
+        var container = Loader.instance().getIndexedModList().get(MODID);
+        String version = container != null ? container.getVersion() : "unknown";
+        ActiniumRuntime.setVersion(version);
+        RuntimeOptionsBridge.setAllowDirectMemoryAccess(ActiniumRuntimeOptions::allowDirectMemoryAccess);
+        FogDistanceModeBridge.setCircularFogEnabledProvider(() -> ActiniumRuntime.options().quality.circularFog);
+        EmbeddiumRuntimeOptions.setChunkMultiDrawMode(() -> ActiniumRuntime.options().advanced.multiDrawMode);
+        GpuCullingSettings.apply(ActiniumRuntime.options());
+        PostProcessingBridge.setDepthTextureProvider(framebuffer -> ((IRenderTargetExt) framebuffer).iris$getDepthTextureId());
+        PostProcessingBridge.setLightmapColorAccessor(renderer -> ((AccessorEntityRenderer) renderer).getLightmapColors());
+        PostProcessingBridge.setLightmapTextureAccessor(renderer -> ((AccessorEntityRenderer) renderer).getLightmapTexture());
+        PostProcessingBridge.setNightVisionBrightnessInvoker(
+            (entity, partialTicks) -> ((AccessorEntityRenderer) Minecraft.getMinecraft().entityRenderer)
+                .invokeGetNightVisionBrightness(entity, partialTicks));
+        WorldRendererCompatBridge.setProvider(ActiniumWorldRenderer::instanceNullable);
+        InstancingSupportProvider.setProvider(AngelicaConfig::cubeInstancingEnabled);
+        CloudAnimationCycle.setTicks(CloudRenderer::cloudCycleTicks);
+        IrisDebugOptions.setBridge(new IrisDebugOptions.Bridge() {
+            @Override
+            public boolean pbrDebugEnabled() {
+                return ActiniumRuntimeOptions.pbrDebugEnabled();
+            }
+
+            @Override
+            public boolean enableActiniumGlDebug() {
+                return ActiniumRuntime.options().debug.enableActiniumGlDebug;
+            }
+
+            @Override
+            public boolean enableCloudControlDebug() {
+                return ActiniumRuntime.options().debug.enableCloudControlDebug;
+            }
+
+            @Override
+            public boolean enableFrameGlErrorCheck() {
+                return ActiniumRuntime.options().debug.enableFrameGlErrorCheck;
+            }
+
+            @Override
+            public boolean enablePostRenderGlErrorCheck() {
+                return ActiniumRuntime.options().debug.enablePostRenderGlErrorCheck;
+            }
+
+            @Override
+            public boolean enableActiniumPerfDebug() {
+                return ActiniumRuntime.options().debug.enableActiniumPerfDebug;
+            }
+
+            @Override
+            public boolean enableActiniumGpuPerfDebug() {
+                return ActiniumRuntime.options().debug.enableActiniumGpuPerfDebug;
+            }
+
+            @Override
+            public boolean ignoreFramebufferErrors() {
+                return ActiniumRuntime.options().debug.ignoreFramebufferErrors;
+            }
+
+            @Override
+            public boolean enableIris() {
+                return ActiniumConfig.enableIris;
+            }
+
+            @Override
+            public boolean enableCeleritas() {
+                return ActiniumConfig.enableCeleritas;
+            }
+
+            @Override
+            public boolean defineIsIris() {
+                return ActiniumConfig.defineIsIris;
+            }
+
+            @Override
+            public boolean enableHardcodedCustomUniforms() {
+                return ActiniumConfig.enableHardcodedCustomUniforms;
+            }
+
+            @Override
+            public boolean disableF3Additions() {
+                return ActiniumConfig.disableF3Additions;
+            }
+
+            @Override
+            public boolean useTotalWorldTime() {
+                return ActiniumConfig.useTotalWorldTime;
+            }
+
+            @Override
+            public void cycleAnimationsMode() {
+                ClientProxy.animationsMode.next();
+            }
+        });
+        GLSMPerfDebugHooks.addStatsProvider(Actinium::dumpExtraPerfStats);
+        GLSMPerfDebugHooks.setConfiguredEnabled(
+            ActiniumRuntimeOptions.resolvePerfDebugEnabled(ActiniumRuntime.options().debug.enableActiniumPerfDebug)
+        );
+        GLSMPerfDebugHooks.setEnabledChangeListener(Actinium::reloadShaderPipelineForPerfDebug);
+
+        GLSMHooks.textureBindSyncCallback = VanillaTextureMirrorCompat.createCallback();
+
+        ActiniumDiagnostics.logConstruction();
+        initializeDistantHorizonsCompat();
+        MinecraftForge.EVENT_BUS.register(this);
+    }
+
+    @EventHandler
+    public void onInit(FMLInitializationEvent event) {
+        if (Mods.NEOFONTRENDER) {
+            NeoFontRenderCompat.initialize();
+        }
+        ChunkAnimatorCompat.install();
+        KirinoCompat.install();
+        NeverEnoughAnimationsAlphaOverride.install();
+        ClientProxy.configureShaderDiskCache();
+        FpsReducer.init();
+
+        ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
+                .registerReloadListener(resourceManager -> MissingModelCompat.onResourceManagerReload());
+        GLSMHooks.TEXTURE_DELETE.addListener(deletion -> EntityTextureAtlas.INSTANCE.onTextureDeleted(deletion.textureId));
+        ((IReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
+                .registerReloadListener(resourceManager -> TesrLifecycle.reset());
+        MinecraftForge.EVENT_BUS.register(new AngelicaTesrMeshCache.ReloadListener());
+
+        if ((Boolean) Launch.blackboard.get("fml.deobfuscatedEnvironment")) {
+            ClientCommandHandler.instance.registerCommand(new TogglePassCommand());
+        }
+
+        if (Iris.enabled) {
+            IrisGLSMBridge.register();
+            Iris.INSTANCE.fmlInitEvent();
+            MinecraftForge.EVENT_BUS.register(Iris.INSTANCE);
+        }
+
+        ActiniumDiagnostics.logInitialization(ActiniumRuntime.version());
+    }
+
+    /**
+     * Drops every cache keyed by world or pass state when a world is left: batched TESR meshes,
+     * the entity atlas pages and the interned layers all belong to the world that produced them.
+     */
+    @SubscribeEvent
+    public void onWorldUnload(WorldEvent.Unload event) {
+        if (!event.getWorld().isRemote) return;
+        TesrLifecycle.reset();
+    }
+
+    /**
+     * Distant Horizons owns its own integration (the {@code IIrisAccessor} binding and the deferred LOD
+     * toggle); Actinium only installs the shader-side DH render programs that DH then triggers itself.
+     */
+    private static void initializeDistantHorizonsCompat() {
+        if (Iris.enabled && Mods.DISTANTHORIZONS) {
+            DHCompat.run();
+        }
+    }
+
+    private static String dumpExtraPerfStats() {
+        String fastLitStats = FastLitItemDisplayListCache.dumpStatsAndReset();
+        String shadowStats = AdaptiveShadowBoundsStats.dumpStatsAndReset();
+        if (shadowStats.isEmpty()) {
+            return fastLitStats;
+        }
+        if (fastLitStats.isEmpty()) {
+            return shadowStats;
+        }
+        return fastLitStats + " " + shadowStats;
+    }
+
+    private static void reloadShaderPipelineForPerfDebug() {
+        if (!Iris.enabled || Minecraft.getMinecraft().world == null) {
+            return;
+        }
+        try {
+            Iris.reload();
+        } catch (IOException | RuntimeException exception) {
+            Iris.logger.error("Failed to reload shader pipeline after changing Actinium perf debug", exception);
+        }
+    }
+
+    /**
+     * Starts the shader warmup on the first title screen. That is the earliest point where the render
+     * thread is idle, so class loading for the shader pipeline happens before any world is opened.
+     */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void onTitleScreenOpened(GuiOpenEvent event) {
+        if (titleScreenOpened || event.isCanceled() || !(event.getGui() instanceof GuiMainMenu)) {
+            return;
+        }
+        titleScreenOpened = true;
+        SdlGpuBootstrap.onLoadingComplete();
+        if (Iris.enabled) {
+            ShaderWarmup.start();
+        }
+    }
+
+    /**
+     * Hands every render tick to the per-frame parts of the mod. The perf debug report clock runs so a
+     * window with no timed stage still reports the {@code DebugCounters} deltas, which the periodic
+     * stage timer alone would never reach when shaders are off and the PBR animation counters are the
+     * only thing moving; the performance indicator records and draws on the same tick.
+     */
+    @SubscribeEvent
+    public void onRenderTick(TickEvent.RenderTickEvent event) {
+        if (event.phase == TickEvent.Phase.END && GLSMPerfDebug.isEnabled()) {
+            GLSMPerfDebug.pollCounters();
+        }
+        PerformanceIndicators.onRenderTick(event);
+    }
+
+    @SubscribeEvent
+    public void onF3Text(RenderGameOverlayEvent.Text event) {
+        if (!Minecraft.getMinecraft().gameSettings.showDebugInfo) {
+            return;
+        }
+
+        var strings = event.getRight();
+        strings.add("");
+        strings.add(String.format("%s%s Renderer (%s)", TextFormatting.AQUA, "Actinium", ActiniumRuntime.version()));
+
+        if (Minecraft.getMinecraft().isReducedDebug()) {
+            return;
+        }
+
+        var renderer = ActiniumWorldRenderer.instanceNullable();
+
+        if (renderer != null) {
+            strings.addAll(renderer.getDebugStrings());
+        }
+
+        String kirinoStatus = KirinoCompat.debugStatus();
+        if (kirinoStatus != null) {
+            strings.add(kirinoStatus);
+        }
+
+        for (int i = 0; i < strings.size(); i++) {
+            String str = strings.get(i);
+
+            if (str.startsWith("Allocated:")) {
+                strings.add(i + 1, getNativeMemoryString());
+                break;
+            }
+        }
+    }
+
+    private static String getNativeMemoryString() {
+        return "Off-Heap: +" + MathUtil.toMib(getNativeMemoryUsage()) + "MB";
+    }
+
+    private static long getNativeMemoryUsage() {
+        return ManagementFactory.getMemoryMXBean().getNonHeapMemoryUsage().getUsed() + NativeBuffer.getTotalAllocated();
+    }
+
+    public static SodiumGameOptions options() {
+        return ActiniumRuntime.options();
+    }
+}

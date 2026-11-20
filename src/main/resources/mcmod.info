@@ -1,0 +1,19 @@
+[
+  {
+    "modid": "actinium",
+    "name": "Protactinium",
+    "description": "Actinium ported to Minecraft 1.10.2: a batched terrain renderer, a GLSM state tracker over LWJGL 3, and the render pipeline that goes with them.",
+    "version": "alpha-0.0.1-1.10.2",
+    "mcversion": "1.10.2",
+    "url": "https://github.com/Actinium-Dev/Actinium",
+    "authorList": [
+      "Actinium contributors",
+      "Protactinium port"
+    ],
+    "credits": "Ported from Actinium. Original design and implementation by the Actinium, Angelica and Celeritas authors.",
+    "logoFile": "",
+    "screenshots": [],
+    "parent": "",
+    "useDependencyInformation": false
+  }
+]

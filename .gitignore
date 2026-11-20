@@ -1,0 +1,14 @@
+# Build output, generated files and local caches. Everything here is reproducible from the sources
+# plus the pinned jars in libs/, so none of it belongs in history.
+build/
+run/
+*.jar.tmp
+*.log
+
+# Scratch analysis scripts written while diagnosing a specific failure. They are working notes, not
+# part of the build.
+build/scratch/
+
+# The deobfuscated Forge jar and the SRG are inputs from the sibling project, referenced by absolute
+# path in build.ps1; they are never copied in here.
+_tmp/

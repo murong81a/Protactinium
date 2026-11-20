@@ -1,0 +1,314 @@
+package dhj.embeddedt.embeddium.impl.gl.device;
+
+import dhj.embeddedt.embeddium.impl.gl.array.GlVertexArray;
+import dhj.embeddedt.embeddium.impl.gl.buffer.*;
+import dhj.embeddedt.embeddium.impl.gl.tessellation.GlIndexType;
+import dhj.embeddedt.embeddium.impl.gl.tessellation.GlPrimitiveType;
+import dhj.embeddedt.embeddium.impl.gl.tessellation.GlTessellation;
+import dhj.embeddedt.embeddium.impl.gl.buffer.*;
+import dhj.embeddedt.embeddium.impl.gl.functions.DeviceFunctions;
+import dhj.embeddedt.embeddium.impl.gl.state.GlStateTracker;
+import dhj.embeddedt.embeddium.impl.gl.sync.GlFence;
+import dhj.embeddedt.embeddium.impl.gl.tessellation.*;
+import dhj.embeddedt.embeddium.impl.gl.util.EnumBitField;
+import org.jetbrains.annotations.Nullable;
+import com.mitchej123.lwjgl.GL32;
+
+import java.nio.ByteBuffer;
+
+import static com.mitchej123.lwjgl.LWJGLServiceProvider.LWJGL;
+
+public class GLRenderDevice implements RenderDevice {
+    private final GlStateTracker stateTracker = new GlStateTracker();
+    private final CommandList commandList = new ImmediateCommandList(this.stateTracker);
+    private final DrawCommandList drawCommandList = new ImmediateDrawCommandList();
+
+    private final DeviceFunctions functions = new DeviceFunctions(this);
+
+    private boolean isActive;
+    private GlTessellation activeTessellation;
+
+    @Override
+    public CommandList createCommandList() {
+        GLRenderDevice.this.checkDeviceActive();
+
+        return this.commandList;
+    }
+
+    @Override
+    public void makeActive() {
+        if (this.isActive) {
+            return;
+        }
+
+        unbindArrayBuffer();
+
+        this.stateTracker.clear();
+        this.isActive = true;
+    }
+
+    @Override
+    public void makeInactive() {
+        if (!this.isActive) {
+            return;
+        }
+
+        unbindArrayBuffer();
+
+        this.stateTracker.clear();
+        this.isActive = false;
+    }
+
+    /**
+     * Leaves the array buffer unbound so code that runs outside managed blocks never inherits a buffer this device
+     * bound. The state tracker only caches bindings this device issues, so a leftover handle would otherwise point at
+     * an object the caller does not own.
+     */
+    private static void unbindArrayBuffer() {
+        LWJGL.glBindBuffer(GlBufferTarget.ARRAY_BUFFER.getTargetParameter(), 0);
+    }
+
+    @Override
+    public DeviceFunctions getDeviceFunctions() {
+        return this.functions;
+    }
+
+    private void checkDeviceActive() {
+        if (!this.isActive) {
+            throw new IllegalStateException("Tried to access device from unmanaged context");
+        }
+    }
+
+    private class ImmediateCommandList implements CommandList {
+        private final GlStateTracker stateTracker;
+
+        private ImmediateCommandList(GlStateTracker stateTracker) {
+            this.stateTracker = stateTracker;
+        }
+
+        @Override
+        public void bindVertexArray(GlVertexArray array) {
+            // GLSM shares this GL context and binds vertex arrays of its own without going through
+            // this tracker, so the cached handle can name a VAO that is no longer bound. Always issue
+            // the bind: a skipped rebind here draws with GLSM's array and no element buffer
+            // (GL_INVALID_OPERATION, missing sections).
+            this.stateTracker.makeVertexArrayActive(array);
+            LWJGL.glBindVertexArray(array.handle());
+        }
+
+        @Override
+        public void uploadData(GlMutableBuffer glBuffer, ByteBuffer byteBuffer, GlBufferUsage usage) {
+            this.bindBuffer(GlBufferTarget.ARRAY_BUFFER, glBuffer);
+
+            LWJGL.glBufferData(GlBufferTarget.ARRAY_BUFFER.getTargetParameter(), byteBuffer, usage.getId());
+            glBuffer.setSize(byteBuffer.remaining());
+        }
+
+        @Override
+        public void uploadData(GlMutableBuffer glBuffer, long ptr, long bytes, GlBufferUsage usage) {
+            this.uploadData(glBuffer, ptr, bytes, usage, GlBufferTarget.ARRAY_BUFFER);
+        }
+
+        @Override
+        public void uploadData(GlMutableBuffer glBuffer, long ptr, long bytes, GlBufferUsage usage, GlBufferTarget target) {
+            this.bindBuffer(target, glBuffer);
+
+            LWJGL.glBufferData(target.getTargetParameter(), bytes, ptr, usage.getId());
+            glBuffer.setSize(bytes);
+        }
+
+        @Override
+        public void copyBufferSubData(GlBuffer src, GlBuffer dst, long readOffset, long writeOffset, long bytes) {
+            GLRenderDevice.this.functions.bufferCopyFunctions().copyBufferSubData(this, src, dst, readOffset, writeOffset, bytes);
+        }
+
+        @Override
+        public void bindBuffer(GlBufferTarget target, @Nullable GlBuffer buffer) {
+            // The same reasoning as the vertex array binds applies to every buffer target: GLSM binds
+            // buffers directly, so a skipped rebind here can leave a different object bound. A skipped
+            // ARRAY_BUFFER bind makes the following glBufferData address buffer 0 and fail with
+            // GL_INVALID_OPERATION, dropping the upload.
+            this.stateTracker.makeBufferActive(target, buffer);
+            LWJGL.glBindBuffer(target.getTargetParameter(), buffer != null ? buffer.handle() : 0);
+        }
+
+        @Override
+        public void unbindVertexArray() {
+            // Same reasoning as bindVertexArray: GLSM's own binds are invisible to this tracker.
+            this.stateTracker.makeVertexArrayActive(null);
+            LWJGL.glBindVertexArray(GlVertexArray.NULL_ARRAY_ID);
+        }
+
+        @Override
+        public void allocateStorage(GlMutableBuffer buffer, long bufferSize, GlBufferUsage usage) {
+            this.bindBuffer(GlBufferTarget.ARRAY_BUFFER, buffer);
+
+            LWJGL.glBufferData(GlBufferTarget.ARRAY_BUFFER.getTargetParameter(), bufferSize, usage.getId());
+            buffer.setSize(bufferSize);
+        }
+
+        @Override
+        public void deleteBuffer(GlBuffer buffer) {
+            if (buffer.getActiveMapping() != null) {
+                this.unmap(buffer.getActiveMapping());
+            }
+
+            this.stateTracker.notifyBufferDeleted(buffer);
+
+            buffer.delete();
+        }
+
+        @Override
+        public void deleteVertexArray(GlVertexArray vertexArray) {
+            this.stateTracker.notifyVertexArrayDeleted(vertexArray);
+
+            vertexArray.delete();
+        }
+
+        @Override
+        public void flush() {
+            // NO-OP
+        }
+
+        @Override
+        public DrawCommandList beginTessellating(GlTessellation tessellation) {
+            GLRenderDevice.this.activeTessellation = tessellation;
+            GLRenderDevice.this.activeTessellation.bind(GLRenderDevice.this.commandList);
+
+            return GLRenderDevice.this.drawCommandList;
+        }
+
+        @Override
+        public void deleteTessellation(GlTessellation tessellation) {
+            tessellation.delete(this);
+        }
+
+        @Override
+        public GlBufferMapping mapBuffer(GlBuffer buffer, long offset, long length, EnumBitField<GlBufferMapFlags> flags) {
+            if (buffer.getActiveMapping() != null) {
+                throw new IllegalStateException("Buffer is already mapped");
+            }
+
+            if (flags.contains(GlBufferMapFlags.PERSISTENT) && !(buffer instanceof GlImmutableBuffer)) {
+                throw new IllegalStateException("Tried to map mutable buffer as persistent");
+            }
+
+            // TODO: speed this up?
+            if (buffer instanceof GlImmutableBuffer) {
+                EnumBitField<GlBufferStorageFlags> bufferFlags = ((GlImmutableBuffer) buffer).getFlags();
+
+                if (flags.contains(GlBufferMapFlags.PERSISTENT) && !bufferFlags.contains(GlBufferStorageFlags.PERSISTENT)) {
+                    throw new IllegalArgumentException("Tried to map non-persistent buffer as persistent");
+                }
+
+                if (flags.contains(GlBufferMapFlags.WRITE) && !bufferFlags.contains(GlBufferStorageFlags.MAP_WRITE)) {
+                    throw new IllegalStateException("Tried to map non-writable buffer as writable");
+                }
+
+                if (flags.contains(GlBufferMapFlags.READ) && !bufferFlags.contains(GlBufferStorageFlags.MAP_READ)) {
+                    throw new IllegalStateException("Tried to map non-readable buffer as readable");
+                }
+            }
+
+            this.bindBuffer(GlBufferTarget.ARRAY_BUFFER, buffer);
+
+            ByteBuffer buf = GLRenderDevice.this.functions.bufferMapRangeFunctions()
+                    .mapBufferRange(buffer, offset, length, flags);
+
+            if (buf == null) {
+                throw new RuntimeException("Failed to map buffer");
+            }
+
+            GlBufferMapping mapping = new GlBufferMapping(buffer, buf);
+
+            buffer.setActiveMapping(mapping);
+
+            return mapping;
+        }
+
+        @Override
+        public void unmap(GlBufferMapping map) {
+            checkMapDisposed(map);
+
+            GlBuffer buffer = map.getBufferObject();
+
+            this.bindBuffer(GlBufferTarget.ARRAY_BUFFER, buffer);
+            LWJGL.glUnmapBuffer(GlBufferTarget.ARRAY_BUFFER.getTargetParameter());
+
+            buffer.setActiveMapping(null);
+            map.dispose();
+        }
+
+        @Override
+        public void flushMappedRange(GlBufferMapping map, int offset, int length) {
+            checkMapDisposed(map);
+
+            GlBuffer buffer = map.getBufferObject();
+
+            this.bindBuffer(GlBufferTarget.COPY_READ_BUFFER, buffer);
+            LWJGL.glFlushMappedBufferRange(GlBufferTarget.COPY_READ_BUFFER.getTargetParameter(), offset, length);
+        }
+
+        @Override
+        public GlFence createFence() {
+            return new GlFence(LWJGL.glFenceSync(GL32.GL_SYNC_GPU_COMMANDS_COMPLETE, 0));
+        }
+
+        private void checkMapDisposed(GlBufferMapping map) {
+            if (map.isDisposed()) {
+                throw new IllegalStateException("Buffer mapping is already disposed");
+            }
+        }
+
+        @Override
+        public GlMutableBuffer createMutableBuffer() {
+            return new GlMutableBuffer();
+        }
+
+        @Override
+        public GlImmutableBuffer createImmutableBuffer(long bufferSize, EnumBitField<GlBufferStorageFlags> flags) {
+            GlImmutableBuffer buffer = new GlImmutableBuffer(flags);
+
+            this.bindBuffer(GlBufferTarget.ARRAY_BUFFER, buffer);
+            GLRenderDevice.this.functions.bufferStorageFunctions()
+                    .createBufferStorage(GlBufferTarget.ARRAY_BUFFER, bufferSize, flags);
+
+            return buffer;
+        }
+    }
+
+    private class ImmediateDrawCommandList implements DrawCommandList {
+        public ImmediateDrawCommandList() {
+
+        }
+
+        @Override
+        public void multiDrawElementsBaseVertex(DirectMultiDrawBatch batch, GlPrimitiveType primitiveType, GlIndexType indexType) {
+            GLRenderDevice.this.functions.multidrawFunctions().multiDrawElementsBaseVertex(primitiveType.getId(),
+                    batch.pElementCount,
+                    indexType.getFormatId(),
+                    batch.pElementPointer,
+                    batch.size(),
+                    batch.pBaseVertex);
+        }
+
+        @Override
+        public void multiDrawElementsIndirect(GlBuffer indirectBuffer, int count, GlPrimitiveType primitiveType, GlIndexType indexType) {
+            LWJGL.glMultiDrawElementsIndirect(primitiveType.getId(), indexType.getFormatId(), 0, count, 0);
+        }
+
+        @Override
+        public void endTessellating() {
+            GLRenderDevice.this.activeTessellation.unbind(GLRenderDevice.this.commandList);
+            GLRenderDevice.this.activeTessellation = null;
+        }
+
+        @Override
+        public void flush() {
+            if (GLRenderDevice.this.activeTessellation != null) {
+                this.endTessellating();
+            }
+        }
+    }
+}
+
