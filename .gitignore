@@ -13,6 +13,6 @@ build/scratch/
 # path in build.ps1; they are never copied in here.
 _tmp/
 
-# README is intentionally not published with the source tree.
-README.md
+# The top-level README is intentionally not published with the source tree.
+/README.md
 upstream/

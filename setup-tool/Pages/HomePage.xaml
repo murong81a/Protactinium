@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="ProtactiniumSetup.Pages.HomePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:ProtactiniumSetup.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <ScrollViewer>
+        <StackPanel Spacing="12" MaxWidth="900" HorizontalAlignment="Stretch">
+            <TextBlock Text="环境总览" Style="{ThemeResource TitleTextBlockStyle}" />
+            <TextBlock x:Name="SummaryText"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       TextWrapping="Wrap" />
+
+            <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,8">
+                <Button Content="重新检测" Style="{StaticResource AccentButtonStyle}" Click="OnRescan" />
+                <Button Content="一键补全（可联网项）" Style="{StaticResource OutlineButtonStyle}" Click="OnAutoFix" />
+                <ProgressRing x:Name="BusyRing" Width="22" Height="22" Visibility="Collapsed" />
+            </StackPanel>
+
+            <TextBlock x:Name="GroupBuildHeader" Text="构建依赖" Style="{ThemeResource SubtitleTextBlockStyle}" Margin="0,8,0,4" />
+            <StackPanel x:Name="BuildList" />
+            <TextBlock x:Name="GroupRuntimeHeader" Text="运行时四件套" Style="{ThemeResource SubtitleTextBlockStyle}" Margin="0,8,0,4" />
+            <StackPanel x:Name="RuntimeList" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

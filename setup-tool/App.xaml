@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Application
+    x:Class="ProtactiniumSetup.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ProtactiniumSetup">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- 透明面板背景，让 Mica 材质完整透出 -->
+            <SolidColorBrush x:Key="NavigationViewContentBackground"                Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground"            Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground"           Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewTopPaneBackground"               Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewMinimalPaneBackground"            Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush"           Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewPaneBorderBrush"                  Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewTopNavigationOverflowBackground"  Color="Transparent" />
+
+            <!-- 描边按钮（FastTool 风格） -->
+            <Style x:Key="OutlineButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Foreground" Value="{ThemeResource ButtonForeground}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ControlStrongStrokeColorDefaultBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="16,6,16,8" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="RootBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="4"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter x:Name="ContentPresenter"
+                                                  Content="{TemplateBinding Content}"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                  Foreground="{TemplateBinding Foreground}" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- 状态徽章：绿=已就绪 黄=可选 红=缺失 -->
+            <Style x:Key="StatusDot" TargetType="Ellipse">
+                <Setter Property="Width" Value="10" />
+                <Setter Property="Height" Value="10" />
+                <Setter Property="Margin" Value="0,0,10,0" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

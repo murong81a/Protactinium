@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="ProtactiniumSetup.Pages.PathsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    mc:Ignorable="d"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+
+    <ScrollViewer>
+        <StackPanel Spacing="14" MaxWidth="800">
+            <TextBlock Text="路径设置" Style="{ThemeResource TitleTextBlockStyle}" />
+            <TextBlock Text="工具按下面顺序探测：exe 同目录向上找仓库、D:\JAVA 找 JDK、D:\pcl 找游戏。如果你的东西放在别处，在这里告诉工具。配置保存在 exe 同目录的 setup-paths.json。"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="源码仓库位置（含 build.ps1）" FontWeight="SemiBold" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBox x:Name="RepoBox" Width="420" PlaceholderText="留空 = 自动探测" />
+                    <Button Content="浏览" Style="{StaticResource OutlineButtonStyle}" Click="OnBrowseRepo" />
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="游戏实例目录（含 mods 文件夹）" FontWeight="SemiBold" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBox x:Name="GameBox" Width="420" PlaceholderText="留空 = 自动探测 D:\pcl\versions" />
+                    <Button Content="浏览" Style="{StaticResource OutlineButtonStyle}" Click="OnBrowseGame" />
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,8,0,0">
+                <Button Content="保存并重新检测" Style="{StaticResource AccentButtonStyle}" Click="OnSave" />
+            </StackPanel>
+            <InfoBar x:Name="SavedBar" Severity="Success" Title="已保存" Message="路径已写入 setup-paths.json" IsOpen="False" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

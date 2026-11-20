@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="ProtactiniumSetup.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:ProtactiniumSetup"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="Protactinium 环境助手"
+    mc:Ignorable="d">
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop Kind="BaseAlt" />
+    </Window.SystemBackdrop>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TitleBar x:Name="AppTitleBar" Title="Protactinium 环境助手" Subtitle="构建与运行环境检测 / 补全" />
+
+        <NavigationView
+            x:Name="NavView"
+            Grid.Row="1"
+            IsBackButtonVisible="Collapsed"
+            IsSettingsVisible="False"
+            ItemInvoked="NavView_ItemInvoked"
+            PaneDisplayMode="Left"
+            OpenPaneLength="260">
+
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="环境总览" Tag="home" IsSelected="True">
+                    <NavigationViewItem.Icon>
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE80F;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="构建依赖" Tag="build">
+                    <NavigationViewItem.Icon>
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE943;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="运行时四件套" Tag="runtime">
+                    <NavigationViewItem.Icon>
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE768;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="路径设置" Tag="paths">
+                    <NavigationViewItem.Icon>
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE8B5;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+
+            <Frame x:Name="ContentFrame" Padding="20,12,24,16" />
+        </NavigationView>
+
+        <Border Grid.Row="1"
+                Width="1"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Stretch"
+                Margin="260,0,0,0"
+                IsHitTestVisible="False"
+                Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+    </Grid>
+</Window>
