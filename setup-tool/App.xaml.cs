@@ -8,6 +8,9 @@ public partial class App : Application
 
     public App()
     {
+        // WinAppSDK single-file publish requirement (see build warning): the runtime lookup
+        // directory must be pinned before any WindowsAppSDK type is touched.
+        System.Environment.SetEnvironmentVariable("MICROSOFT_WINDOWSAPPRUNTIME_BASE_DIRECTORY", AppContext.BaseDirectory);
         InitializeComponent();
     }
 
