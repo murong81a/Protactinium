@@ -258,3 +258,26 @@ python tools/audit_injection_selectors.py . build/forgeBin-at.jar <javap> <srg>
 python tools/audit_mixin_members.py . <srg>
 python tools/check_missing_packages.py build/libs/<jar> build/forgeBin-at.jar
 ```
+
+
+---
+
+## 11. Delivery state at commit time
+
+- Jar: `build/libs/Protactinium-alpha-0.0.1-1.10.2.jar`, **8.20 MB** (was 10.05 MB).
+- Language files packaged: **16** (were 0, which is why the options screen showed raw keys).
+- Pre-version-50 classes without stack map frames: **0**. All embedded libraries (JOML 46, jcpp 49,
+  antlr 52, glsl-transformer 52) are re-emitted through ASM, so the `VerifyError` class of failure is
+  addressed for every library that was audited.
+- fastutil: **1275** classes staged. This is higher than the 686 measured earlier because the staging
+  tool was changed again after that measurement. **The regression is not explained in this document.**
+  Neither figure is fully trusted: the 686 result came from a parser bug that returned zero
+  supertypes, and the 1275 result follows a widening of the closure. This needs re-examination.
+- Build: all seven stages compile with 0 errors and every form gate passes.
+
+Checks a reviewer can run without launching:
+
+```
+python tools/audit_injection_selectors.py . build/forgeBin-at.jar <javap> <srg>   # 45 problems
+python tools/audit_mixin_members.py . <srg>                                       # OK, 53 checked
+```
