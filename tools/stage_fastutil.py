@@ -1,32 +1,27 @@
 #!/usr/bin/env python3
-"""Stage only the fastutil classes this mod genuinely needs at run time.
+"""Stage the fastutil classes FastutilUpgraderTransformer needs as its swap payload.
 
-Why this exists, and why the previous version was wrong:
+Why this exists, and why skipping game-provided classes was wrong:
 
-The client carries fastutil 7.0.12 as a core library, and its classes win in the launch class path.
-That is measured, not assumed: a call that exists only in fastutil 8 failed with
+Forge puts fastutil 7.1.0 on the launch class path, and its classes win classloading against the
+mod jar. FastutilUpgraderTransformer therefore swaps the bytes of every fastutil class that loads
+through LaunchClassLoader with fastutil 8 bytes read from META-INF/actinium_libs/fastutil8.
 
-    NoSuchMethodError: Int2ObjectMap.computeIfAbsent(int, Int2ObjectFunction)
+The swap only produces a consistent run time if every fastutil type a swapped class can reach is
+itself swapped: a v8 map implementation implementing a v7 interface died with
 
-while a staged copy of the same interface sat in this jar. A class the game already provides can
-therefore never be reached from here, and bundling one changes nothing.
+    NoSuchMethodError: Int2ObjectMap.put(Integer, Object)
 
-The previous version walked the entire constant-pool closure of every fastutil name the mod
-mentions. That is what produced 2381 bundled types from 108 seeds, and 10.76 MB of the shipped jar.
-Constant-pool mentions include method-argument types, field types, cast targets and generics
-signatures, all of which the verifier does not need to load up front.
+because the previous version subtracted the game's fastutil 7 classes from the closure, so the
+payload lacked exactly the interface the shader code calls. A class the game provides is NOT a
+reason to skip it here: the payload replaces those very bytes.
 
-This version walks only what is needed to load a staged class: its superclass and direct interfaces,
-then the members its own bytecode names, but never a type the game already provides. The first two
-are what the verifier resolves before the class may be used; the third is what the class itself may
-call at run time, and leaving it out produces
+The closure stays bounded on purpose (the whole library is about 23 MB): seeds are every fastutil
+type the mod's own code names; the expansion adds each staged class's superclass, direct
+interfaces, the types its field and method descriptors name, its nested classes, and the one-hop
+member-reference targets of the seed classes.
 
-    NoClassDefFoundError: it/unimi/dsi/fastutil/longs/LongPriorityQueue
-
-on a code path that a purely structural walk never sees. Anything the game provides is skipped in
-all three cases, because it is loadable without being bundled.
-
-Usage: stage_fastutil.py <mod-jar> <fastutil-jar> <game-fastutil-jar> <output-dir>
+Usage: stage_fastutil.py <mod-jar> <fastutil-jar> <output-dir>
 """
 
 import pathlib
@@ -230,23 +225,19 @@ def used_types(data: bytes) -> set:
 
 
 def main() -> int:
-    if len(sys.argv) < 5:
-        print("usage: stage_fastutil.py <mod-jar> <fastutil-jar> <game-fastutil-jar> <output-dir>")
+    if len(sys.argv) < 4:
+        print("usage: stage_fastutil.py <mod-jar> <fastutil-jar> <output-dir>")
         return 2
-    mod_jar, fastutil_jar, game_jar, output = (
-        sys.argv[1], sys.argv[2], sys.argv[3], pathlib.Path(sys.argv[4])
+    mod_jar, fastutil_jar, output = (
+        sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3])
     )
     output.mkdir(parents=True, exist_ok=True)
 
-    with zipfile.ZipFile(mod_jar) as mods, \
-            zipfile.ZipFile(fastutil_jar) as lib, \
-            zipfile.ZipFile(game_jar) as game:
+    with zipfile.ZipFile(mod_jar) as mods,             zipfile.ZipFile(fastutil_jar) as lib:
         available = {
             n[:-6]: n for n in lib.namelist()
             if n.startswith("it/unimi/dsi/fastutil/") and n.endswith(".class")
         }
-        provided = {n[:-6] for n in game.namelist()
-                    if n.startswith("it/unimi/") and n.endswith(".class")}
 
         seeds = set()
         for entry in mods.namelist():
@@ -255,27 +246,25 @@ def main() -> int:
 
         # What is staged, and why the closure is bounded this way:
         #
-        #   * the seeds: every fastutil type the mod's own code names, minus what the game provides;
+        #   * the seeds: every fastutil type the mod's own code names. Nothing is subtracted for
+        #     being "already provided": the payload exists precisely to REPLACE the game's fastutil
+        #     7 bytes, so a class the game also ships is still needed here;
         #   * the supertype chain of each staged class, because the verifier resolves a superclass
         #     and the direct interfaces before the class itself may be used;
         #   * the member-reference targets of the SEED classes only, one hop.
         #
         # Member references are NOT followed transitively. fastutil classes reference each other very
         # densely, and walking those edges turns 84 seeds into 1907 classes and 9 MB. A transitive
-        # target is only resolved if some code path actually calls it, and at that point the game's own
-        # fastutil is on the class path for anything it ships. The one-hop set is what the seeds
-        # themselves can reach directly, which is the part this jar must supply itself.
-        provided_or_staged = set(provided)
-
-        seeds_external = sorted(t for t in seeds if t not in provided)
+        # target is only resolved if some code path actually calls it, and at that point the class
+        # loads through the transformer like everything else.
         direct = set()
-        for type_name in seeds_external:
+        for type_name in sorted(seeds):
             entry = available.get(type_name)
             if entry is None:
                 continue
             direct.update(used_types(lib.read(entry)))
 
-        wanted = set(seeds_external) | (direct - provided)
+        wanted = set(seeds) | direct
 
         # Close over what a staged class needs in order to be usable: its supertypes, and the types
         # its own field and method signatures name. It is the signature types that produce failures
@@ -287,18 +276,18 @@ def main() -> int:
         expanded = set()
         while pending:
             type_name = pending.pop()
-            if type_name in expanded or type_name in provided:
+            if type_name in expanded:
                 continue
             expanded.add(type_name)
             entry = available.get(type_name)
             if entry is None:
                 continue
             data = lib.read(entry)
-            pending.extend(linked(data) - provided)
-            pending.extend((signature_types(data) - provided) - expanded)
+            pending.extend(linked(data))
+            pending.extend(signature_types(data) - expanded)
             prefix = type_name + "$"
             for candidate in available:
-                if candidate.startswith(prefix) and candidate not in provided and candidate not in expanded:
+                if candidate.startswith(prefix) and candidate not in expanded:
                     pending.append(candidate)
 
         staged = set()
@@ -312,10 +301,7 @@ def main() -> int:
             target.write_bytes(data)
             staged.add(type_name)
 
-        skipped = 0
-
     print(f"staged {len(staged)} fastutil classes into {output}")
-    print(f"skipped {skipped} class(es) because the game already provides them")
     return 0
 
 

@@ -249,6 +249,18 @@ foreach ($name in $Stage) {
             & $python (Join-Path $base ("tools\" + $converter.Tool)) $base $srg --check
             if ($LASTEXITCODE -ne 0) { throw ("not all " + $converter.Done + "; run tools\" + $converter.Tool) }
         }
+
+        # Injection selectors and handler signatures are checked against the real deobfuscated
+        # classes. The form-only gates above passed while every one of these failed at runtime,
+        # which is why both audits resolve names through javap against the real jar.
+        $javap = 'D:\JAVA\zulu-jdk17.0.21.0.3\bin\javap.exe'
+        $forgeBinAt = Join-Path $base 'build\forgeBin-at.jar'
+        if ((Test-Path $javap) -and (Test-Path $forgeBinAt)) {
+            & $python (Join-Path $base 'tools\audit_injection_selectors.py') $base $forgeBinAt $javap $srg
+            if ($LASTEXITCODE -ne 0) { throw "injection selector audit failed" }
+            & $python (Join-Path $base 'tools\audit_handler_signatures.py') $base $forgeBinAt $javap $srg
+            if ($LASTEXITCODE -ne 0) { throw "handler signature audit failed" }
+        }
     }
 }
 
@@ -321,13 +333,34 @@ if (Test-Path $fastutilScanJar) { Remove-Item $fastutilScanJar -Force }
 & $jarExe --create --file $fastutilScanJar -C $stage .
 $fastutilStage = Join-Path $base 'build\staged-fastutil'
 if (Test-Path $fastutilStage) { Remove-Item $fastutilStage -Recurse -Force }
-& $python (Join-Path $base 'tools\stage_fastutil.py') $fastutilScanJar `
-    (Join-Path $base 'libs\fastutil-8.5.18.jar') `
-    (Join-Path $base 'libs\fastutil-game-7.0.12.jar') `
+& $python (Join-Path $base "tools\stage_fastutil.py") `
+    $fastutilScanJar `
+    (Join-Path $base "libs\fastutil-8.5.18.jar") `
     $fastutilStage
 if ($LASTEXITCODE -ne 0) { throw "staging fastutil failed with $LASTEXITCODE" }
-if ($LASTEXITCODE -ne 0) { throw "staging fastutil failed with $LASTEXITCODE" }
-& robocopy $fastutilStage $stage /E /NFL /NDL /NJH /NJS /NP | Out-Null
+# fastutil 8.5.18 predates the Java 25 verifier needs on some classes (half of them carry
+# no StackMapTable), so the payload is re-emitted with computed frames exactly like the
+# other embedded libraries before it is packed into the .bin entries.
+& $python (Join-Path $base "tools\add_stackmaps.py") $fastutilStage 61 `
+    (Join-Path $base "libs\asm-9.7.1.jar") `
+    (Join-Path $base "libs\asm-tree-9.7.1.jar")
+if ($LASTEXITCODE -ne 0) { throw "computing stack maps for fastutil failed with $LASTEXITCODE" }
+# The staged fastutil 8 classes become the swap payload FastutilUpgraderTransformer reads
+# from /META-INF/actinium_libs/fastutil8/<name>.bin. They deliberately do NOT sit at the jar
+# top level: Forge puts fastutil 7 ahead of the mod jar on the launch class path, so a
+# top-level copy never loads, and a half-swapped mix of 7 and 8 dies with
+# NoSuchMethodError on exactly the interface the shader code calls.
+$fastutilPayload = Join-Path $base "build\fastutil-payload"
+if (Test-Path $fastutilPayload) { Remove-Item $fastutilPayload -Recurse -Force }
+$payloadRoot = Join-Path $fastutilPayload ("META-INF\actinium_libs\fastutil8")
+New-Item -ItemType Directory -Force $payloadRoot | Out-Null
+Get-ChildItem $fastutilStage -Recurse -Filter "*.class" | ForEach-Object {
+    $relative = $_.FullName.Substring($fastutilStage.Length + 1) -replace "[.]class$", ".bin"
+    $destination = Join-Path $payloadRoot $relative
+    New-Item -ItemType Directory -Force (Split-Path $destination) | Out-Null
+    Copy-Item $_.FullName $destination -Force
+}
+& robocopy $fastutilPayload $stage /E /NFL /NDL /NJH /NJS /NP | Out-Null
 
 # Libraries the coremod touches before any mod is on the class path have to live inside the jar
 # body: FML instantiates the coremod while building the launch class path, and a jar that merely
@@ -370,11 +403,30 @@ foreach ($embedded in $embeddedLibs) {
     & robocopy $expanded $stage /E /NFL /NDL /NJH /NJS /NP /XF "MANIFEST.MF" "*.SF" "*.RSA" "*.DSA" "module-info.class" | Out-Null
 }
 
+# jcpp's Preprocessor static-initialises an slf4j Logger, and FML excludes org.slf4j from the
+# launch class loader while nothing on this instance provides it, so the first shaderpack load
+# died with NoClassDefFoundError: org/slf4j/LoggerFactory. The API is embedded under a private
+# package and every reference in the staged classes is rewritten to it.
+& $python (Join-Path $base "tools\relocate_slf4j.py") `
+    (Join-Path $base "libs\slf4j-api-2.0.16.jar") `
+    $stage `
+    (Join-Path $base "libs\asm-9.7.1.jar") `
+    (Join-Path $base "libs\asm-commons-9.7.1.jar") `
+    (Join-Path $base "libs\asm-tree-9.7.1.jar")
+if ($LASTEXITCODE -ne 0) { throw "slf4j relocation failed with $LASTEXITCODE" }
+
 # FML only reads an access transformer from META-INF, and only the file named by the FMLAT
 # manifest entry, so the AT file is moved there rather than left at the jar root where it would be
 # packaged but never applied.
+#
+# The AT must be rewritten to SRG member names BEFORE it is packaged: the production client is
+# SRG-named, FML applies the entries verbatim, and an MCP-named entry silently matches nothing. The
+# first hotbar item render then dies with IllegalAccessError on a field the AT was supposed to
+# widen. The compile-time jar keeps MCP names, so the rewrite happens here, in packaging.
 $atInStage = Join-Path $stage 'actinium_at.cfg'
 if (Test-Path $atInStage) {
+    & $python (Join-Path $base 'tools\rewrite_at.py') $atInStage $srg $atInStage
+    if ($LASTEXITCODE -ne 0) { throw "AT SRG rewrite failed with $LASTEXITCODE" }
     New-Item -ItemType Directory -Force (Join-Path $stage 'META-INF') | Out-Null
     Move-Item $atInStage (Join-Path $stage 'META-INF\protactinium_at.cfg') -Force
 }

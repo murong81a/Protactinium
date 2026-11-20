@@ -20,7 +20,7 @@ public abstract class MixinTileEntitySkullRenderer {
 
     @ModifyArg(
         method = "renderSkull(FFFLnet/minecraft/util/EnumFacing;FILcom/mojang/authlib/GameProfile;IF)V",
-        at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/tileentity/TileEntitySpecialRenderer;func_147499_a(Lnet/minecraft/util/ResourceLocation;)V"),
+        at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/tileentity/TileEntitySkullRenderer;bindTexture(Lnet/minecraft/util/ResourceLocation;)V"),
         index = 0
     )
     private ResourceLocation actinium$captureTexture(ResourceLocation texture, @Share("texture") LocalRef<ResourceLocation> boundTexture) {

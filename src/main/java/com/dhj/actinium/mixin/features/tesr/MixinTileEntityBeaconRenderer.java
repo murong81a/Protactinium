@@ -24,7 +24,7 @@ public abstract class MixinTileEntityBeaconRenderer {
         cancellable = true
     )
     private void actinium$batchBeam(TileEntityBeacon beacon, double x, double y, double z, float partialTicks,
-                                    int destroyStage, float alpha, CallbackInfo ci) {
+                                    int destroyStage, CallbackInfo ci) {
         if (BeaconBeamMeshes.render(beacon, x, y, z, partialTicks)) {
             ci.cancel();
         }

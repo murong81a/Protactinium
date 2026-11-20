@@ -67,8 +67,40 @@ public abstract class MixinFontRenderer implements FontRendererAccessor, IFontPa
     @Inject(method = "drawString(Ljava/lang/String;FFIZ)I", at = @At("HEAD"), cancellable = true)
     private void actinium$drawStringBatched(String text, float x, float y, int argb, boolean dropShadow,
         CallbackInfoReturnable<Integer> cir) {
+        actinium$dumpDrawnText(text, x, y);
         if (!FontBatcherCompat.isBatcherDisabledFor(getClass()) && GLStateManager.getListMode() == 0) {
             cir.setReturnValue(angelica$drawStringBatched(text, (int) x, (int) y, argb, dropShadow));
+        }
+    }
+
+    /** Property-gated text dump: -Dprotactinium.textDump=&lt;path&gt; records every drawn string. */
+    @Unique private static java.io.PrintWriter actinium$textDump;
+    @Unique private static boolean actinium$textDumpTried;
+
+    @Unique
+    private static void actinium$dumpDrawnText(String text, float x, float y) {
+        if (!actinium$textDumpTried) {
+            actinium$textDumpTried = true;
+            final java.io.File marker = new java.io.File("protactinium-text-dump.enabled");
+            final String property = System.getProperty("protactinium.textDump", "");
+            final String target = !property.isEmpty() ? property
+                : (marker.isFile() ? "text-dump.txt" : "");
+            if (!target.isEmpty()) {
+                try {
+                    actinium$textDump = new java.io.PrintWriter(new java.io.BufferedWriter(
+                        new java.io.FileWriter(target, true)), false);
+                    actinium$LOGGER.info("text dump active: {}", target);
+                } catch (java.io.IOException e) {
+                    actinium$LOGGER.warn("text dump unavailable", e);
+                }
+            }
+        }
+        if (actinium$textDump != null && text != null && !text.isEmpty()) {
+            final Minecraft mc = Minecraft.getMinecraft();
+            final int scale = mc == null || mc.gameSettings == null ? 3 : mc.gameSettings.guiScale;
+            actinium$textDump.println(String.format("scale=%d x=%.0f y=%.0f %s", scale, x, y,
+                text.replace(System.lineSeparator(), " | ")));
+            actinium$textDump.flush();
         }
     }
 

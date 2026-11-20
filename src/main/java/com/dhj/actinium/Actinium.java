@@ -302,7 +302,7 @@ public class Actinium {
 
         var strings = event.getRight();
         strings.add("");
-        strings.add(String.format("%s%s Renderer (%s)", TextFormatting.AQUA, "Actinium", ActiniumRuntime.version()));
+        strings.add(String.format("%s%s Renderer (%s)", TextFormatting.AQUA, "Protactinium", ActiniumRuntime.version()));
 
         if (Minecraft.getMinecraft().isReducedDebug()) {
             return;

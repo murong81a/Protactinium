@@ -12,3 +12,6 @@ build/scratch/
 # The deobfuscated Forge jar and the SRG are inputs from the sibling project, referenced by absolute
 # path in build.ps1; they are never copied in here.
 _tmp/
+
+# README is intentionally not published with the source tree.
+README.md

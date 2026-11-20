@@ -22,7 +22,6 @@ public class TileEntityBeaconRendererIrisMixin {
         double z,
         float partialTicks,
         int destroyStage,
-        float alpha,
         CallbackInfo ci
     ) {
         GbufferPrograms.setupSpecialRenderCondition(SpecialCondition.BEACON_BEAM);
@@ -39,7 +38,6 @@ public class TileEntityBeaconRendererIrisMixin {
         double z,
         float partialTicks,
         int destroyStage,
-        float alpha,
         CallbackInfo ci
     ) {
         GbufferPrograms.teardownSpecialRenderCondition();

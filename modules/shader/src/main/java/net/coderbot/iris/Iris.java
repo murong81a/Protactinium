@@ -111,7 +111,7 @@ public class Iris {
      * The user-facing name of the mod. Moved into a constant to facilitate easy branding changes (for forks). You'll still need to change this separately in
      * mixin plugin classes & the language files.
      */
-    public static final String MODNAME = "ActiniumShaders";
+    public static final String MODNAME = "ProtactiniumShader";
 
     public static final IrisLogging logger = new IrisLogging(MODNAME);
 

@@ -741,6 +741,10 @@ public class GLStateManager {
 
     static void preInit(int displayWidth, int displayHeight) {
         capabilities = GLContext.getCapabilities();
+        // lwjgl3ify's GLContext hands out an empty ContextCapabilities in this build, which
+        // answers false to every capability query routed through the compat layer (compute
+        // shaders included, on a GL 4.6 context). The real LWJGL 3 view fills it here.
+        LwjglCapabilityBridge.populate();
         HAS_MULTIPLE_SET
             .addFeature(GL11.GL_ACCUM_CLEAR_VALUE)
             .addFeature(GLConstants.GL_BLEND_COLOR)
