@@ -251,6 +251,7 @@ public class FinalPassRenderer {
 	}
 
 	public void renderFinalPass() {
+        net.coderbot.iris.debug.StageTrace.count("final");
         IrisGlDebug.check("final:start");
         GLStateManager.disableBlend();
         GLStateManager.disableAlphaTest();

@@ -137,3 +137,6 @@ gui.actinium.indicator.row.vram=显存
 gui.actinium.indicator.refresh=刷新间隔：%s 毫秒
 gui.actinium.indicator.save=保存
 gui.actinium.indicator.cancel=取消
+options.chunks=%s 区块
+options.clouds.fast=流畅
+options.clouds.fancy=高品质

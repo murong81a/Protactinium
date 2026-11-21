@@ -304,6 +304,7 @@ public class CompositeRenderer {
 	}
 
 	public void renderAll() {
+        net.coderbot.iris.debug.StageTrace.count("composite");
         IrisGlDebug.check("composite:start");
         GLStateManager.disableBlend();
         GLStateManager.disableAlphaTest();

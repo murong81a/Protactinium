@@ -25,7 +25,11 @@ public interface TextComponent {
             if (args.isEmpty()) {
                 return keyString;
             }
-            return keyString + args;
+            // Formatted here rather than at the draw site: the draw path resolves a plain string
+            // through I18n, and appending the argument list to the key (as this did) produces
+            // "options.framerate[260]", which no translation can match. I18n.format returns the key
+            // unchanged when it is unknown, so an untranslated key still degrades to readable text.
+            return net.minecraft.client.resources.I18n.format(keyString, args.toArray());
         }
     }
 

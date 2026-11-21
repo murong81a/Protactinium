@@ -90,7 +90,7 @@ public class RenderSystem {
         boolean dsaEnabled = false;
         if (!isGLES) {
             try {
-                if (GLStateManager.capabilities.OpenGL45) {
+                if (CapabilityFlags.of(GLStateManager.capabilities, "OpenGL45")) {
                     dsaState = (Runtime.version().feature() > 8 && GLStateManager.capabilities.GL_EXT_direct_state_access) ? new DSAEXT() : new DSACore();
                     dsaEnabled = true;
                     GLStateManager.LOGGER.info("OpenGL 4.5 detected, enabling DSA.");
@@ -116,18 +116,40 @@ public class RenderSystem {
 
         BackendManager.init();
 
-        supportsCompute = supportsCompute();
-        supportsTesselation = GLStateManager.capabilities.GL_ARB_tessellation_shader || GLStateManager.capabilities.OpenGL40;
+        // The compatibility layer's capability object is a copy made once, when its class first
+        // loaded, and on this target that copy came out all false on a GL 4.6 context. The install
+        // cannot fix it because a second class loader owns the copy the renderer ends up holding, so
+        // the flags are derived here from GL_VERSION instead. Core profile makes the version
+        // authoritative for every flag below: 4.0 has tessellation, 4.2 texture storage and image
+        // load/store, 4.3 compute and SSBO, 4.4 buffer storage and clear texture.
+        promoteCoreCapabilities();
 
-        supportsImageLoadStore = GLStateManager.capabilities.OpenGL42
-                || GLStateManager.capabilities.GL_ARB_shader_image_load_store
+        supportsCompute = supportsCompute();
+        supportsTesselation = CapabilityFlags.of(GLStateManager.capabilities, "GL_ARB_tessellation_shader") || CapabilityFlags.of(GLStateManager.capabilities, "OpenGL40");
+
+        supportsImageLoadStore = CapabilityFlags.of(GLStateManager.capabilities, "OpenGL42")
+                || CapabilityFlags.of(GLStateManager.capabilities, "GL_ARB_shader_image_load_store")
                 || GLStateManager.capabilities.GL_EXT_shader_image_load_store;
-        supportsSSBO = GLStateManager.capabilities.OpenGL43 || GLStateManager.capabilities.GL_ARB_shader_storage_buffer_object;
-        supportsBufferStorage = !isGLES && (GLStateManager.capabilities.OpenGL44 || GLStateManager.capabilities.GL_ARB_buffer_storage);
-        supportsClearTexture = GLStateManager.capabilities.OpenGL44 || GLStateManager.capabilities.GL_ARB_clear_texture;
-        supportsStencilTexturing = GLStateManager.capabilities.OpenGL43 || GLStateManager.capabilities.GL_ARB_stencil_texturing;
+        supportsSSBO = CapabilityFlags.of(GLStateManager.capabilities, "OpenGL43") || CapabilityFlags.of(GLStateManager.capabilities, "GL_ARB_shader_storage_buffer_object");
+        supportsBufferStorage = !isGLES && (CapabilityFlags.of(GLStateManager.capabilities, "OpenGL44") || CapabilityFlags.of(GLStateManager.capabilities, "GL_ARB_buffer_storage"));
+        supportsClearTexture = CapabilityFlags.of(GLStateManager.capabilities, "OpenGL44") || CapabilityFlags.of(GLStateManager.capabilities, "GL_ARB_clear_texture");
+        supportsStencilTexturing = CapabilityFlags.of(GLStateManager.capabilities, "OpenGL43") || CapabilityFlags.of(GLStateManager.capabilities, "GL_ARB_stencil_texturing");
         supportsTextureStorage = isGLES ? glesVersion >= 300
-            : GLStateManager.capabilities.OpenGL42 || GLStateManager.capabilities.GL_ARB_texture_storage;
+            : CapabilityFlags.of(GLStateManager.capabilities, "OpenGL42") || CapabilityFlags.of(GLStateManager.capabilities, "GL_ARB_texture_storage");
+        // One line that says which of the derived switches are on. Without it the only symptom of a
+        // capability that was read before the context answered is that a feature quietly takes its
+        // fallback path, which is indistinguishable from the feature being absent.
+        GLStateManager.LOGGER.info("GL capabilities: caps={} OpenGL42={} OpenGL43={} OpenGL44={} "
+                        + "OpenGL45={} compute={} ssbo={} imageLoadStore={} tessellation={} "
+                        + "bufferStorage={} clearTexture={}",
+                GLStateManager.capabilities.getClass().getName(),
+                Boolean.valueOf(CapabilityFlags.of(GLStateManager.capabilities, "OpenGL42")),
+                Boolean.valueOf(CapabilityFlags.of(GLStateManager.capabilities, "OpenGL43")),
+                Boolean.valueOf(CapabilityFlags.of(GLStateManager.capabilities, "OpenGL44")),
+                Boolean.valueOf(CapabilityFlags.of(GLStateManager.capabilities, "OpenGL45")),
+                Boolean.valueOf(supportsCompute), Boolean.valueOf(supportsSSBO),
+                Boolean.valueOf(supportsImageLoadStore), Boolean.valueOf(supportsTesselation),
+                Boolean.valueOf(supportsBufferStorage), Boolean.valueOf(supportsClearTexture));
         // MobileGlues masquerades as desktop GL but compiles shaders through ESSL translation,
         // where gl_ClipDistance needs GL_EXT_clip_cull_distance (issue #214). MobileGlues advertises
         // that extension only when the real ES backend supports it, so the plain extension query
@@ -140,9 +162,9 @@ public class RenderSystem {
         }
 
         if (supportsImageLoadStore) {
-            if (GLStateManager.capabilities.OpenGL42) {
+            if (CapabilityFlags.of(GLStateManager.capabilities, "OpenGL42")) {
                 maxImageUnits = RENDER_BACKEND.getInteger(GL42.GL_MAX_IMAGE_UNITS);
-            } else if (GLStateManager.capabilities.GL_ARB_shader_image_load_store) {
+            } else if (CapabilityFlags.of(GLStateManager.capabilities, "GL_ARB_shader_image_load_store")) {
                 maxImageUnits = RENDER_BACKEND.getInteger(ARBShaderImageLoadStore.GL_MAX_IMAGE_UNITS);
             } else {
                 maxImageUnits = RENDER_BACKEND.getInteger(EXTShaderImageLoadStore.GL_MAX_IMAGE_UNITS_EXT);
@@ -152,7 +174,7 @@ public class RenderSystem {
         }
 
         if (supportsSSBO) {
-            if (GLStateManager.capabilities.OpenGL43) {
+            if (CapabilityFlags.of(GLStateManager.capabilities, "OpenGL43")) {
                 maxSSBOBindings = RENDER_BACKEND.getInteger(GL43.GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS);
             } else {
                 maxSSBOBindings = RENDER_BACKEND.getInteger(ARBShaderStorageBufferObject.GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS);
@@ -161,7 +183,7 @@ public class RenderSystem {
             maxSSBOBindings = 0;
         }
 
-        supportsSamplerObjects = GLStateManager.capabilities.OpenGL33 || GLStateManager.capabilities.GL_ARB_sampler_objects;
+        supportsSamplerObjects = CapabilityFlags.of(GLStateManager.capabilities, "OpenGL33") || CapabilityFlags.of(GLStateManager.capabilities, "GL_ARB_sampler_objects");
         if (supportsSamplerObjects) {
             samplers = new int[RENDER_BACKEND.getInteger(GL20.GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS)];
         }
@@ -180,7 +202,7 @@ public class RenderSystem {
         if (isGLES) {
             GLStateManager.LOGGER.info("GL ES context detected, enabling shader transformer.");
             ShaderManager.getInstance().enable();
-        } else if (GLStateManager.capabilities.OpenGL32) {
+        } else if (CapabilityFlags.of(GLStateManager.capabilities, "OpenGL32")) {
             final int profileMask = RENDER_BACKEND.getInteger(GL32.GL_CONTEXT_PROFILE_MASK);
             if ((profileMask & GL32.GL_CONTEXT_CORE_PROFILE_BIT) != 0) {
                 GLStateManager.LOGGER.info("GL 3.3 core profile detected, enabling FFP shader emulation.");
@@ -545,7 +567,7 @@ public class RenderSystem {
     }
 
     public static boolean supportsBufferBlending() {
-        return GLStateManager.capabilities.GL_ARB_draw_buffers_blend || GLStateManager.capabilities.OpenGL40;
+        return CapabilityFlags.of(GLStateManager.capabilities, "GL_ARB_draw_buffers_blend") || CapabilityFlags.of(GLStateManager.capabilities, "OpenGL40");
     }
 
     public static void disableBufferBlend(int buffer) {
@@ -614,10 +636,94 @@ public class RenderSystem {
      * context instead of reporting no support. Compute shaders are core in GL 4.3, and {@code ARB_compute_shader}
      * exposes them on a 4.2 context.
      */
+    /**
+     * Raises the capability flags that a core profile context of this version guarantees.
+     *
+     * <p>Only ever sets a flag to true: a capability the context really lacks is left as reported.
+     */
+    private static void promoteCoreCapabilities() {
+        final String version = RENDER_BACKEND.getString(GL11.GL_VERSION);
+        int packed = parseGlVersion(version);
+        if (packed <= 0) {
+            GLStateManager.LOGGER.warn("GL_VERSION is unreadable ({}), capability flags stay as reported",
+                    version);
+            return;
+        }
+        final Object capabilities = GLStateManager.capabilities;
+        // Written through reflection: the compile-time declaration of this class marks the fields
+        // final, while the object the renderer actually holds at runtime is the compatibility
+        // layer's mutable copy.
+        if (packed >= 40) {
+            raise(capabilities, "OpenGL40", "GL_ARB_tessellation_shader");
+        }
+        if (packed >= 41) {
+            raise(capabilities, "OpenGL41");
+        }
+        if (packed >= 42) {
+            raise(capabilities, "OpenGL42", "GL_ARB_texture_storage",
+                    "GL_ARB_shader_image_load_store");
+        }
+        if (packed >= 43) {
+            raise(capabilities, "OpenGL43", "GL_ARB_compute_shader",
+                    "GL_ARB_shader_storage_buffer_object", "GL_ARB_stencil_texturing");
+        }
+        if (packed >= 44) {
+            raise(capabilities, "OpenGL44", "GL_ARB_buffer_storage", "GL_ARB_clear_texture");
+        }
+        if (packed >= 45) {
+            raise(capabilities, "OpenGL45", "GL_ARB_direct_state_access");
+        }
+        GLStateManager.LOGGER.info("Capability flags promoted from GL_VERSION {}: OpenGL43={} compute={}",
+                version, Boolean.valueOf(readFlag(capabilities, "OpenGL43")),
+                Boolean.valueOf(readFlag(capabilities, "GL_ARB_compute_shader")));
+    }
+
+    /** Sets the named capability flags to true on the live capability object. */
+    private static void raise(Object capabilities, String... names) {
+        for (String name : names) {
+            try {
+                capabilities.getClass().getField(name).setBoolean(capabilities, true);
+            } catch (ReflectiveOperationException absent) {
+                // The flag does not exist on this build; nothing to raise.
+            }
+        }
+    }
+
+    /** Reads a capability flag back, for the diagnostic line only. */
+    private static boolean readFlag(Object capabilities, String name) {
+        try {
+            return capabilities.getClass().getField(name).getBoolean(capabilities);
+        } catch (ReflectiveOperationException absent) {
+            return false;
+        }
+    }
+
+    /** Parses "4.6.0 ..." into 46; returns -1 when the string does not start with a version. */
+    private static int parseGlVersion(String version) {
+        if (version == null) {
+            return -1;
+        }
+        final int dot = version.indexOf('.');
+        if (dot <= 0) {
+            return -1;
+        }
+        try {
+            final int major = Integer.parseInt(version.substring(0, dot).trim());
+            int end = dot + 1;
+            while (end < version.length() && Character.isDigit(version.charAt(end))) {
+                end++;
+            }
+            final int minor = Integer.parseInt(version.substring(dot + 1, end));
+            return major * 10 + minor;
+        } catch (NumberFormatException notAVersion) {
+            return -1;
+        }
+    }
+
     public static boolean supportsCompute() {
         final ContextCapabilities capabilities = GLStateManager.capabilities;
         if (capabilities != null) {
-            return capabilities.GL_ARB_compute_shader;
+            return CapabilityFlags.of(capabilities, "GL_ARB_compute_shader");
         }
         return LWJGL.isOpenGLVersionSupported(4, 3) || LWJGL.isExtensionSupported(GLExtension.ARB_compute_shader);
     }
@@ -718,12 +824,12 @@ public class RenderSystem {
     public static boolean supportsSnormFormats() {
         if (isGLES()) return false;
         final Boolean forTesting = snormFormatsForTesting;
-        return forTesting != null ? forTesting : GLStateManager.capabilities.OpenGL31;
+        return forTesting != null ? forTesting : CapabilityFlags.of(GLStateManager.capabilities, "OpenGL31");
     }
 
     public static boolean supportsPackedFloatRenderable() {
         final Boolean forTesting = packedFloatRenderableForTesting;
-        return forTesting != null ? forTesting : GLStateManager.capabilities.OpenGL30 && maxGlslVersion >= 130;
+        return forTesting != null ? forTesting : CapabilityFlags.of(GLStateManager.capabilities, "OpenGL30") && maxGlslVersion >= 130;
     }
 
     /**

@@ -63,7 +63,6 @@ public final class CoreProfileDisplayCreator {
 
     public static void create(PixelFormat format) throws LWJGLException {
         if (SdlGpuBootstrap.createDisplay(format)) return;
-        adoptCreatedCapabilities();
         ForgeEarlyConfigCompat.Snapshot original = ForgeEarlyConfigCompat.snapshot();
         boolean lwjglDebug = ActiniumStartupDebugConfig.enableLwjglDebug();
         Throwable creationFailure = null;
@@ -106,6 +105,7 @@ public final class CoreProfileDisplayCreator {
         // leaves untouched and where the LWJGL 3 names survive.
         try {
             Lwjgl3Capabilities.install();
+            LOGGER.info("LWJGL 3 capabilities after install: {}", Lwjgl3Capabilities.report());
         } catch (RuntimeException | LinkageError failure) {
             LOGGER.warn("Could not install LWJGL capabilities for the created context", failure);
         }
@@ -132,6 +132,12 @@ public final class CoreProfileDisplayCreator {
                 ContextAttribs attribs = CoreProfileContextAttributes.create(major, minor, lwjglDebug);
                 try {
                     createDisplay(format, attribs);
+                    // Only now is a context current on this thread. Called before the loop, as it
+                    // was, the install had no context to read and every capability stayed false:
+                    // GL.createCapabilities() throws "no OpenGL context current in the current
+                    // thread", the warning was logged, and the renderer spent the session on
+                    // fallbacks (compute, SSBO, image load/store, per-buffer blending all off).
+                    adoptCreatedCapabilities();
                 } catch (Exception e) {
                     lastException = e;
                     LOGGER.debug(

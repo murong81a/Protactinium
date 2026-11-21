@@ -173,3 +173,6 @@ actinium.redirectorDebug=Redirector debug log
 actinium.redirectorDebug.tooltip=Log every GL call the state tracker redirects. Very verbose.
 actinium.streamingDrawStateDebug=Streaming draw state debug
 actinium.streamingDrawStateDebug.tooltip=Log the state captured for each streaming draw.
+options.chunks=%s chunks
+options.clouds.fast=Fast
+options.clouds.fancy=Fancy

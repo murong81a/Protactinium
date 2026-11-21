@@ -1,6 +1,7 @@
 package dhj.embeddedt.embeddium.impl.render.culling;
 
 import com.gtnewhorizons.angelica.glsm.GLSMBuffers;
+import com.gtnewhorizons.angelica.glsm.CapabilityFlags;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import com.gtnewhorizons.angelica.glsm.backend.BackendManager;
@@ -89,7 +90,7 @@ public final class GpuCulling {
      */
     private static boolean supportsGl42() {
         final ContextCapabilities capabilities = GLStateManager.capabilities;
-        return capabilities != null ? capabilities.OpenGL42 : LWJGL.isOpenGLVersionSupported(4, 2);
+        return capabilities != null ? CapabilityFlags.of(capabilities, "OpenGL42") : LWJGL.isOpenGLVersionSupported(4, 2);
     }
 
     /**

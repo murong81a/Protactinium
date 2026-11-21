@@ -1,6 +1,7 @@
 package net.coderbot.iris.postprocess;
 
 import com.google.common.collect.ImmutableSet;
+import com.gtnewhorizons.angelica.glsm.CapabilityFlags;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.gtnewhorizons.angelica.glsm.RenderSystem;
 import net.coderbot.iris.debug.IrisGlDebug;
@@ -39,7 +40,7 @@ public class CenterDepthSampler {
 		this.framebuffer = new GlFramebuffer();
 
 		// Fall back to a less precise format if the system doesn't support OpenGL 3
-		InternalTextureFormat format = GLStateManager.capabilities.OpenGL32 ? InternalTextureFormat.R32F : InternalTextureFormat.RGB16;
+		InternalTextureFormat format = CapabilityFlags.of(GLStateManager.capabilities, "OpenGL32") ? InternalTextureFormat.R32F : InternalTextureFormat.RGB16;
 		setupColorTexture(texture, format);
 		setupColorTexture(altTexture, format);
 		GLSMTextures.glBindTexture(GL11.GL_TEXTURE_2D, 0);

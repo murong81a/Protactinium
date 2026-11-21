@@ -983,6 +983,9 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	private static final InputAvailability SHADOW_INPUTS = new InputAvailability(true, true);
 
 	public void beginPass(Pass pass) {
+		// The shadow path calls this with no pass; a null there is normal, not a defect.
+		net.coderbot.iris.debug.StageTrace.count(pass == null ? "null-pass"
+				: (pass.instancingSourceName != null ? pass.instancingSourceName : "unnamed-pass"));
 		programMatch.runUnrecorded(() -> beginPassNow(pass));
 	}
 
