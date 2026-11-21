@@ -984,8 +984,10 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 
 	public void beginPass(Pass pass) {
 		// The shadow path calls this with no pass; a null there is normal, not a defect.
-		net.coderbot.iris.debug.StageTrace.count(pass == null ? "null-pass"
-				: (pass.instancingSourceName != null ? pass.instancingSourceName : "unnamed-pass"));
+		final String stage = pass == null ? "null-pass"
+				: (pass.instancingSourceName != null ? pass.instancingSourceName : "unnamed-pass");
+		net.coderbot.iris.debug.StageTrace.count(stage);
+		com.gtnewhorizons.angelica.glsm.GLStateManager.setDrawStage(stage);
 		programMatch.runUnrecorded(() -> beginPassNow(pass));
 	}
 

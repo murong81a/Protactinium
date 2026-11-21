@@ -1633,7 +1633,36 @@ public class GLStateManager {
 
             public static void glDrawArraysInstanced(int mode, int first, int count, int primcount) { GLSMDraws.glDrawArraysInstanced(mode, first, count, primcount); }
 
+    /** Last pass name announced by the shader pipeline, for draw diagnostics. */
+    private static String drawStage = "";
+
+    /** Announced by the pipeline at each pass so a draw can be attributed to a stage. */
+    public static void setDrawStage(String stage) {
+        drawStage = stage == null ? "" : stage;
+    }
+
+    private static long lastMatrixProbe;
+
+    private static void probeEntityMatrices() {
+        if (!drawStage.contains("entities")) {
+            return;
+        }
+        final long now = System.currentTimeMillis();
+        if (now - lastMatrixProbe < 1000L) {
+            return;
+        }
+        lastMatrixProbe = now;
+        final Matrix4f mv = getModelViewMatrix();
+        final Matrix4f proj = getProjectionMatrix();
+        LOGGER.info("[entity probe] stage={} mvTranslation=({}, {}, {}) mv00={} proj00={} proj11={}",
+                drawStage, Float.valueOf(mv.m30()), Float.valueOf(mv.m31()), Float.valueOf(mv.m32()),
+                Float.valueOf(mv.m00()), Float.valueOf(proj.m00()), Float.valueOf(proj.m11()));
+    }
+
     static void preDrawFFP() {
+        // Entity draws change the model view after the program was bound; the uniforms follow here.
+        CompatUniformManager.refreshModelViewIfChanged();
+        probeEntityMatrices();
         final VAOManager vaos = ctx().vaos;
         final ShaderManager ffp = ctx().ffp;
         if (vaos.hasAnyClientSideEnabledAttrib()) {

@@ -106,11 +106,11 @@ public final class IrisGlDebug {
 			return Boolean.parseBoolean(override);
 		}
 
-        try {
-            return IrisDebugOptions.enableActiniumGlDebug();
-        } catch (RuntimeException ignored) {
-            return false;
-        }
+        // Forced on for the current diagnosis: the composite stage is where the wrong picture is
+        // suspected to originate, and the sampler bindings and depth samples it prints are the only
+        // cheap way to see what those stages actually read. The setting remains the switch once the
+        // defect is located.
+        return true;
     }
 
     public static boolean isCloudControlDebugEnabled() {

@@ -197,6 +197,34 @@ public class CompatUniformManager {
         }
     }
 
+    /**
+     * Uploads the model view matrix when the transform stack changed since the last upload.
+     *
+     * <p>Uniforms are otherwise refreshed only when a program is bound. Entity rendering pushes a
+     * transform per entity after the bind, so every model was drawn with the matrix the pass started
+     * with: entities appeared displaced and skewed, on every pack. This runs before each draw and
+     * costs one integer compare when nothing moved.
+     */
+    public static void refreshModelViewIfChanged() {
+        if (!GLStateManager.isCachingEnabled()) {
+            return;
+        }
+        final int program = GLStateManager.getActiveProgram();
+        if (program == 0) {
+            return;
+        }
+        CompatProgramUniformState state = programStates.get(program);
+        if (state == null || !state.isValid()) {
+            return;
+        }
+        final int generation = GLStateManager.getMvGeneration();
+        if (!state.needsModelViewUpload(generation)) {
+            return;
+        }
+        uploadMatrices(state.getLocations(), true, false, false);
+        state.markModelViewUploaded(generation);
+    }
+
     public static void refreshCurrentProgramMatrices() {
         if (!GLStateManager.isCachingEnabled()) {
             // Matrix state belongs to the cache-owning context during the splash screen.
