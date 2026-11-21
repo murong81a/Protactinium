@@ -29,7 +29,49 @@ public class GlShader extends GlResource {
         this.name = name;
     }
 
+    /**
+     * Writes every compiled source to shaderdump/.
+     *
+     * <p>On by default until the transformed terrain source has been read once: the transform is
+     * where the coordinate space is decided, and the pack's own file cannot show that.
+     */
+    private static final boolean DUMP_SOURCES = true;
+
+    /** Keeps every distinct source, since one program name is compiled through several patches. */
+    private static int dumpSequence;
+
+    /**
+     * Saves the exact source the driver compiles.
+     *
+     * <p>Reading the pack on disk is not the same source: the transformer rewrites vertex accesses,
+     * built-in uniforms and attribute names, and a wrong rewrite is invisible in the original file.
+     */
+    private static void dumpSource(ShaderType type, String name, String src) {
+        if (!DUMP_SOURCES) {
+            return;
+        }
+        try {
+            java.io.File dir = new java.io.File("shaderdump");
+            if (!dir.isDirectory() && !dir.mkdirs()) {
+                return;
+            }
+            // A sequence number, because the same name is compiled through different transform
+            // paths (ATTRIBUTES and CELERITAS_TERRAIN both call their program gbuffers_terrain) and
+            // a shared file name would keep only the last one written.
+            String file = name.replaceAll("[^A-Za-z0-9-]", "_") + "."
+                    + type.name().toLowerCase(Locale.ROOT) + "."
+                    + (dumpSequence++) + ".glsl";
+            try (java.io.Writer writer = new java.io.OutputStreamWriter(
+                    new java.io.FileOutputStream(new java.io.File(dir, file)), "UTF-8")) {
+                writer.write(src);
+            }
+        } catch (java.io.IOException failure) {
+            LOGGER.warn("Could not dump the shader source for " + name, failure);
+        }
+    }
+
     private static int createShader(ShaderType type, String name, String src) {
+        dumpSource(type, name, src);
 		int handle = GLSMPrograms.glCreateShader(type.id);
         // TODO: Iris
         // TODO: ShaderWorkaround

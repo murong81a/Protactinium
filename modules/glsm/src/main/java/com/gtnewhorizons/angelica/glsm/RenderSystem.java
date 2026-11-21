@@ -88,9 +88,15 @@ public class RenderSystem {
         }
 
         boolean dsaEnabled = false;
+        // The DSA implementation is a switch, not a discovery. Before the capability flags were read
+        // correctly this always fell through to DSAARB; with OpenGL45 now reported it selects DSACore,
+        // a path no session had run before the terrain image changed. Default is ARB (the previously
+        // working path); pass -Dactinium.dsa.core=true to compare the two.
+        final boolean preferDsCore = Boolean.parseBoolean(
+                System.getProperty("actinium.dsa.core", "false"));
         if (!isGLES) {
             try {
-                if (CapabilityFlags.of(GLStateManager.capabilities, "OpenGL45")) {
+                if (preferDsCore && CapabilityFlags.of(GLStateManager.capabilities, "OpenGL45")) {
                     dsaState = (Runtime.version().feature() > 8 && GLStateManager.capabilities.GL_EXT_direct_state_access) ? new DSAEXT() : new DSACore();
                     dsaEnabled = true;
                     GLStateManager.LOGGER.info("OpenGL 4.5 detected, enabling DSA.");
@@ -123,6 +129,7 @@ public class RenderSystem {
         // authoritative for every flag below: 4.0 has tessellation, 4.2 texture storage and image
         // load/store, 4.3 compute and SSBO, 4.4 buffer storage and clear texture.
         promoteCoreCapabilities();
+        applyGpuSelfTest();
 
         supportsCompute = supportsCompute();
         supportsTesselation = CapabilityFlags.of(GLStateManager.capabilities, "GL_ARB_tessellation_shader") || CapabilityFlags.of(GLStateManager.capabilities, "OpenGL40");
@@ -676,6 +683,41 @@ public class RenderSystem {
         GLStateManager.LOGGER.info("Capability flags promoted from GL_VERSION {}: OpenGL43={} compute={}",
                 version, Boolean.valueOf(readFlag(capabilities, "OpenGL43")),
                 Boolean.valueOf(readFlag(capabilities, "GL_ARB_compute_shader")));
+    }
+
+    /**
+     * Runs the GPU self test and demotes every capability whose real operation failed.
+     *
+     * <p>A demoted flag is what keeps a shader pack on the code path that works; advertising a
+     * feature that selects a broken path turns a clear "unsupported" into a silently wrong picture.
+     */
+    private static void applyGpuSelfTest() {
+        final int failures = GpuSelfTest.run();
+        if (failures == 0) {
+            return;
+        }
+        if ((failures & GpuSelfTest.COMPUTE) != 0) {
+            lower(GLStateManager.capabilities, "GL_ARB_compute_shader");
+        }
+        if ((failures & GpuSelfTest.SSBO) != 0) {
+            lower(GLStateManager.capabilities, "GL_ARB_shader_storage_buffer_object");
+        }
+        if ((failures & GpuSelfTest.IMAGE_STORE) != 0) {
+            lower(GLStateManager.capabilities, "GL_ARB_shader_image_load_store");
+        }
+        GLStateManager.LOGGER.warn("GPU self test failed (mask {}): matching capabilities demoted",
+                Integer.valueOf(failures));
+    }
+
+    /** Sets the named capability flags to false on the live capability object. */
+    private static void lower(Object capabilities, String... names) {
+        for (String name : names) {
+            try {
+                capabilities.getClass().getField(name).setBoolean(capabilities, false);
+            } catch (ReflectiveOperationException absent) {
+                // The flag does not exist on this build; nothing to lower.
+            }
+        }
     }
 
     /** Sets the named capability flags to true on the live capability object. */

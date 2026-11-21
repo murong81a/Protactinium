@@ -2648,7 +2648,40 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	}
 
 	private static CompletableFuture<Map<PatchShaderType, String>> submitCeleritasTerrainTransform(ProgramSource source) {
-		return Iris.ShaderTransformExecutor.submitTracked(() -> TransformPatcher.patchCeleritasTerrain(source.getVertexSource().orElse(null), source.getGeometrySource().orElse(null), source.getFragmentSource().orElse(null)));
+		return Iris.ShaderTransformExecutor.submitTracked(() -> {
+			Map<PatchShaderType, String> transformed = TransformPatcher.patchCeleritasTerrain(
+					source.getVertexSource().orElse(null),
+					source.getGeometrySource().orElse(null),
+					source.getFragmentSource().orElse(null));
+			// The celeritas terrain programs are built by the chunk renderer's own shader class, not
+			// by the Iris one, so the compile-time dump never sees them. Written here instead: this
+			// is the exact source that decides how a terrain vertex reaches clip space.
+			dumpCeleritasTerrain(transformed.get(PatchShaderType.VERTEX));
+			return transformed;
+		});
+	}
+
+	/** Sequence for the celeritas terrain dumps, one file per transformed variant. */
+	private static int celeritasTerrainDumpSequence;
+
+	private static void dumpCeleritasTerrain(String vertexSource) {
+		if (vertexSource == null) {
+			return;
+		}
+		try {
+			java.io.File dir = new java.io.File("shaderdump");
+			if (!dir.isDirectory() && !dir.mkdirs()) {
+				return;
+			}
+			int index = celeritasTerrainDumpSequence++;
+			try (java.io.Writer writer = new java.io.OutputStreamWriter(
+					new java.io.FileOutputStream(new java.io.File(dir,
+							"celeritas_terrain_" + index + ".vertex.glsl")), "UTF-8")) {
+				writer.write(vertexSource);
+			}
+		} catch (java.io.IOException failure) {
+			Iris.logger.warn("Could not dump the celeritas terrain source", failure);
+		}
 	}
 
 	@SafeVarargs

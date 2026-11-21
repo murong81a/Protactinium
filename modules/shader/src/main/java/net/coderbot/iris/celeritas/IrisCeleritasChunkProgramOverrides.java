@@ -103,6 +103,14 @@ public class IrisCeleritasChunkProgramOverrides {
         final BlendModeOverride blendOverride = passInfo.blendModeOverride();
         final List<BufferBlendOverride> bufferOverrides = passInfo.bufferBlendOverrides();
         final Function<ShaderBindingContext, IrisCeleritasChunkShaderInterface> factory = context -> {
+            // Names the program the terrain draw actually binds. The generic attribute transform
+            // produces a program of the same pack name without the region offset, so "which program
+            // is bound" is the question that decides whether a vertex lands in the right place.
+            org.apache.logging.log4j.LogManager.getLogger("ProtactiniumShader").info(
+                    "celeritas chunk program: pass={} handle={} format={} attributes={}",
+                    pass.getName(), Integer.valueOf(((GlObject) context).handle()),
+                    vertexType.getClass().getSimpleName(),
+                    vertexType.getVertexFormat().getAttributes());
             IrisGlDebug.logCeleritasProgram(pass.getName(), ((GlObject) context).handle(), vertexType.getVertexFormat().getAttributes());
             return new IrisCeleritasChunkShaderInterface(((GlObject) context).handle(), context, pipeline, pass.isShadow(), passInfo.alphaTestOverride(), passInfo.alphaReference(), blendOverride, bufferOverrides, pipeline.getCustomUniforms());
         };

@@ -43,6 +43,16 @@ import com.gtnewhorizons.angelica.glsm.GLSMVertexInput;
 
 public class IrisCeleritasChunkShaderInterface implements ChunkShaderInterface {
     @Nullable
+    private static final org.apache.logging.log4j.Logger LOGGER =
+            org.apache.logging.log4j.LogManager.getLogger("ProtactiniumShader");
+    private static final Matrix4f lastModelView = new Matrix4f();
+    private static final Matrix4f lastProjection = new Matrix4f();
+    private static boolean shadowInputsDumped;
+    private static boolean mainInputsDumped;
+    private static float lastOffsetX;
+    private static float lastOffsetY;
+    private static float lastOffsetZ;
+
     private final GlUniformMatrix4f uniformModelViewMatrix;
     @Nullable
     private final GlUniformMatrix4f uniformModelViewMatrixInverse;
@@ -218,6 +228,7 @@ public class IrisCeleritasChunkShaderInterface implements ChunkShaderInterface {
 
     @Override
     public void setProjectionMatrix(Matrix4fc matrix) {
+        lastProjection.set(matrix);
         if (uniformProjectionMatrix != null) {
             uniformProjectionMatrix.set(matrix);
         }
@@ -231,6 +242,7 @@ public class IrisCeleritasChunkShaderInterface implements ChunkShaderInterface {
 
     @Override
     public void setModelViewMatrix(Matrix4fc modelView) {
+        lastModelView.set(modelView);
         if (uniformModelViewMatrix != null) {
             uniformModelViewMatrix.set(modelView);
         }
@@ -251,9 +263,55 @@ public class IrisCeleritasChunkShaderInterface implements ChunkShaderInterface {
 
     @Override
     public void setRegionOffset(float x, float y, float z) {
+        lastOffsetX = x;
+        lastOffsetY = y;
+        lastOffsetZ = z;
         if (uniformRegionOffset != null) {
             uniformRegionOffset.set(x, y, z);
         }
+        dumpTerrainInputs(this.shadowPass);
+    }
+
+    /**
+     * One-shot dump of everything a terrain vertex goes through.
+     *
+     * <p>The pack computes its clip position as {@code projection * modelView * (vertPosition +
+     * regionOffset + drawTranslation)}. If any one of those is in a different space than the pack
+     * assumes, the terrain lands somewhere wrong while every stage still reports that it drew. These
+     * four values only make sense side by side: camera-relative positions mean the model view's
+     * translation is the negated camera position, and the region offset must be the same kind of
+     * small number.
+     */
+    private static void dumpTerrainInputs(boolean shadowPass) {
+        if (shadowPass ? shadowInputsDumped : mainInputsDumped) {
+            return;
+        }
+        if (shadowPass) {
+            shadowInputsDumped = true;
+        } else {
+            mainInputsDumped = true;
+        }
+        final String tag = shadowPass ? "shadow" : "main";
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getMinecraft();
+        double viewerX = 0.0D;
+        double viewerY = 0.0D;
+        double viewerZ = 0.0D;
+        if (mc != null && mc.getRenderManager() != null) {
+            viewerX = mc.getRenderManager().viewerPosX;
+            viewerY = mc.getRenderManager().viewerPosY;
+            viewerZ = mc.getRenderManager().viewerPosZ;
+        }
+        LOGGER.info("[terrain dump {}] viewer=({}, {}, {})", tag, Double.valueOf(viewerX),
+                Double.valueOf(viewerY), Double.valueOf(viewerZ));
+        LOGGER.info("[terrain dump {}] modelView translation=({}, {}, {}) m00={} m11={} m22={}",
+                tag, Float.valueOf(lastModelView.m30()), Float.valueOf(lastModelView.m31()),
+                Float.valueOf(lastModelView.m32()), Float.valueOf(lastModelView.m00()),
+                Float.valueOf(lastModelView.m11()), Float.valueOf(lastModelView.m22()));
+        LOGGER.info("[terrain dump {}] projection m00={} m11={} m22={} m23={}", tag,
+                Float.valueOf(lastProjection.m00()), Float.valueOf(lastProjection.m11()),
+                Float.valueOf(lastProjection.m22()), Float.valueOf(lastProjection.m23()));
+        LOGGER.info("[terrain dump {}] regionOffset=({}, {}, {})", tag,
+                Float.valueOf(lastOffsetX), Float.valueOf(lastOffsetY), Float.valueOf(lastOffsetZ));
     }
 
     @Override
