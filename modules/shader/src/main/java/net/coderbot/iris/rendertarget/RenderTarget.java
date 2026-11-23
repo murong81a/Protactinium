@@ -82,6 +82,12 @@ public class RenderTarget {
 	void resize(int width, int height) {
 		requireValid();
 
+		// A zero-sized texture cannot be a framebuffer attachment, and the pass framebuffers built
+		// from one are INCOMPLETE_ATTACHMENT. Keep the last valid storage instead.
+		if (width <= 0 || height <= 0) {
+			return;
+		}
+
 		this.width = width;
 		this.height = height;
 

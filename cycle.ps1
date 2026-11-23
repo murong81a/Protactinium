@@ -16,7 +16,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $project = $PSScriptRoot
-$jar = Join-Path $project 'build\libs\Protactinium-alpha-0.0.1-1.10.2.jar'
+$jar = Join-Path $project 'build\libs\Protactinium-alpha-0.0.5-1.10.2.jar'
 $mods = 'D:\pcl\versions\1.10.2-Forge_12.18.3.2511\mods'
 $python = 'C:\Users\moye136\AppData\Local\Programs\Python\Python312\python.exe'
 

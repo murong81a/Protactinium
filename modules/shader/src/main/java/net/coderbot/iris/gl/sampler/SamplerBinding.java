@@ -31,6 +31,12 @@ public class SamplerBinding {
 
 	private void updateSampler() {
 		RenderSystem.bindSamplerToUnit(textureUnit, sampler);
-		RenderSystem.bindTextureToUnit(textureType.getGlType(), textureUnit, texture.getAsInt());
+
+		// glBindTextureUnit only accepts zero or the name of an existing texture object. Some
+		// optional textures report a negative id while absent (the Distant Horizons depth buffer
+		// when nothing has rendered to it), and binding that id raises GL_INVALID_OPERATION on
+		// every program use. Bind zero instead: the unit stays unbound and samples as zero.
+		final int textureId = texture.getAsInt();
+		RenderSystem.bindTextureToUnit(textureType.getGlType(), textureUnit, textureId < 0 ? 0 : textureId);
 	}
 }

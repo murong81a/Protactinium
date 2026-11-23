@@ -1,11 +1,13 @@
 package net.coderbot.iris.apiimpl;
 
 import net.coderbot.iris.Iris;
+import net.coderbot.iris.gui.screen.ShaderPackScreen;
 import net.coderbot.iris.pipeline.FixedFunctionWorldRenderingPipeline;
 import net.coderbot.iris.pipeline.WorldRenderingPipeline;
 import net.coderbot.iris.shadows.ShadowRenderingState;
 import net.irisshaders.iris.api.v0.IrisApi;
 import net.irisshaders.iris.api.v0.IrisApiConfig;
+import net.minecraft.client.gui.GuiScreen;
 
 
 public class IrisApiV0Impl implements IrisApi {
@@ -35,8 +37,9 @@ public class IrisApiV0Impl implements IrisApi {
 
 	@Override
 	public Object openMainIrisScreenObj(Object parent) {
-        return new Object();
-        // TODO: GUI
+		// The API is version agnostic: callers see Object, but they expect a Screen and put it on
+		// the display. Returning a bare Object leaves them with something they cannot show.
+		return new ShaderPackScreen(parent instanceof GuiScreen ? (GuiScreen) parent : null);
 	}
 
 	@Override

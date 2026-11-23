@@ -987,7 +987,6 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 		final String stage = pass == null ? "null-pass"
 				: (pass.instancingSourceName != null ? pass.instancingSourceName : "unnamed-pass");
 		net.coderbot.iris.debug.StageTrace.count(stage);
-		com.gtnewhorizons.angelica.glsm.GLStateManager.setDrawStage(stage);
 		programMatch.runUnrecorded(() -> beginPassNow(pass));
 	}
 
@@ -2658,7 +2657,7 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 			// The celeritas terrain programs are built by the chunk renderer's own shader class, not
 			// by the Iris one, so the compile-time dump never sees them. Written here instead: this
 			// is the exact source that decides how a terrain vertex reaches clip space.
-			dumpCeleritasTerrain(transformed.get(PatchShaderType.VERTEX));
+			dumpCeleritasTerrain(transformed);
 			return transformed;
 		});
 	}
@@ -2666,8 +2665,10 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 	/** Sequence for the celeritas terrain dumps, one file per transformed variant. */
 	private static int celeritasTerrainDumpSequence;
 
-	private static void dumpCeleritasTerrain(String vertexSource) {
-		if (vertexSource == null) {
+	private static void dumpCeleritasTerrain(Map<PatchShaderType, String> transformed) {
+		final String vertexSource = transformed.get(PatchShaderType.VERTEX);
+		final String fragmentSource = transformed.get(PatchShaderType.FRAGMENT);
+		if (vertexSource == null && fragmentSource == null) {
 			return;
 		}
 		try {
@@ -2676,13 +2677,20 @@ public class DeferredWorldRenderingPipeline implements WorldRenderingPipeline, R
 				return;
 			}
 			int index = celeritasTerrainDumpSequence++;
-			try (java.io.Writer writer = new java.io.OutputStreamWriter(
-					new java.io.FileOutputStream(new java.io.File(dir,
-							"celeritas_terrain_" + index + ".vertex.glsl")), "UTF-8")) {
-				writer.write(vertexSource);
-			}
+			writeShaderDump(dir, "celeritas_terrain_" + index + ".vertex.glsl", vertexSource);
+			writeShaderDump(dir, "celeritas_terrain_" + index + ".fragment.glsl", fragmentSource);
 		} catch (java.io.IOException failure) {
 			Iris.logger.warn("Could not dump the celeritas terrain source", failure);
+		}
+	}
+
+	private static void writeShaderDump(java.io.File dir, String name, String source) throws java.io.IOException {
+		if (source == null) {
+			return;
+		}
+		try (java.io.Writer writer = new java.io.OutputStreamWriter(
+				new java.io.FileOutputStream(new java.io.File(dir, name)), "UTF-8")) {
+			writer.write(source);
 		}
 	}
 

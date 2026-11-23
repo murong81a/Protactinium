@@ -1,14 +1,20 @@
 package net.coderbot.iris.pipeline.transform;
 
+import net.coderbot.iris.Iris;
 import net.coderbot.iris.gl.shader.ShaderType;
 import net.coderbot.iris.pipeline.transform.parameter.Parameters;
+import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.tree.ParseTree;
 import org.taumc.glsl.ShaderPrinter;
 import org.taumc.glsl.Transformer;
 import org.taumc.glsl.grammar.GLSLLexer;
 import org.taumc.glsl.grammar.GLSLParser;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -148,16 +154,77 @@ public class CompatibilityTransformer {
          * identifiers from which the declaration was removed previously.
          * See https://wiki.shaderlabs.org/wiki/Compiler_Behavior_Notes
          */
-        transformer.removeUnusedFunctions();
+        removeUnusedFunctions(transformer);
         transformer.removeConstAssignment();
 
         // TODO: glsl-transformation-lib doesn't have a way to identify empty declarations
         // this transformation is not done in current versions of Iris, so not sure it's necessary
     }
 
+    /**
+     * Removes functions that nothing references, stopping when a pass removes nothing.
+     *
+     * <p>This is the same algorithm as {@link Transformer#removeUnusedFunctions()}, with the
+     * termination the library lacks. The library loops while a pass reports a change, and it
+     * reports a change for every unused name even when {@code removeFunction} removed nothing.
+     * {@code removeFunction} only removes a prototype whose grandparent is an external
+     * declaration. When the source contains a construct the grammar rejects, such as the
+     * {@code 2.0f} float suffix some packs use, ANTLR's error recovery leaves a second,
+     * prototype-only copy of a function inside a declaration statement. That copy cannot be
+     * removed, the name stays unused, and the library spins forever. Measured on 2026-11-23:
+     * iterationT Next's composite vertex stage spun in {@code ArrayList.contains} until the
+     * process was killed after six minutes. Here a pass whose unused set did not change ends
+     * the loop, so an unremovable leftover is skipped instead of hanging the game.</p>
+     */
+    private static void removeUnusedFunctions(Transformer transformer) {
+        final List<GLSLParser.Function_prototypeContext> prototypes = new ArrayList<>();
+        final Set<String> used = new LinkedHashSet<>();
+        Set<String> previous = null;
+        while (true) {
+            prototypes.clear();
+            used.clear();
+            transformer.mutateTree(tree -> collectIdentifiers(tree, prototypes, used));
+
+            final Set<String> unused = new LinkedHashSet<>();
+            for (GLSLParser.Function_prototypeContext prototype : prototypes) {
+                final String name = prototype.IDENTIFIER().getText();
+                if (!"main".equals(name) && !used.contains(name)) {
+                    unused.add(name);
+                }
+            }
+
+            if (unused.isEmpty()) {
+                return;
+            }
+            if (unused.equals(previous)) {
+                Iris.logger.debug("Stopped unused function removal with {} name(s) that cannot be removed: {}",
+                        unused.size(), unused);
+                return;
+            }
+            previous = new LinkedHashSet<>(unused);
+            for (String name : unused) {
+                transformer.removeFunction(name);
+            }
+        }
+    }
+
+    private static void collectIdentifiers(ParseTree node, List<GLSLParser.Function_prototypeContext> prototypes,
+                                           Set<String> used) {
+        if (node instanceof ParserRuleContext) {
+            final int rule = ((ParserRuleContext) node).getRuleIndex();
+            if (rule == GLSLParser.RULE_function_prototype) {
+                prototypes.add((GLSLParser.Function_prototypeContext) node);
+            } else if (rule == GLSLParser.RULE_variable_identifier) {
+                used.add(node.getText());
+            }
+        }
+        for (int i = 0; i < node.getChildCount(); i++) {
+            collectIdentifiers(node.getChild(i), prototypes, used);
+        }
+    }
+
 	// does transformations that require cross-shader type data
-    public static void transformGrouped(Map<PatchShaderType, Transformer> trees, Parameters parameters) {
-		/**
+    public static void transformGrouped(Map<PatchShaderType, Transformer> trees, Parameters parameters) {		/**
 		 * find attributes that are declared as "in" in geometry or fragment but not
 		 * declared as "out" in the previous stage. The missing "out" declarations for
 		 * these attributes are added and initialized.

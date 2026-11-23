@@ -96,6 +96,10 @@ public class IrisFunctions {
 				IrisFunctions.addBinaryOpJOML("add", VectorType.VEC2, Vector2f::add);
 				IrisFunctions.addBinaryOpJOML("add", VectorType.VEC3, Vector3f::add);
 				IrisFunctions.addBinaryOpJOML("add", VectorType.VEC4, Vector4f::add);
+
+				IrisFunctions.addVectorScalarOpJOML("add", VectorType.VEC2, (v, s, d) -> d.set(v).add(s.floatValue(), s.floatValue()), (v, s, d) -> d.set(v).add(s.floatValue(), s.floatValue()));
+				IrisFunctions.addVectorScalarOpJOML("add", VectorType.VEC3, (v, s, d) -> d.set(v).add(s.floatValue(), s.floatValue(), s.floatValue()), (v, s, d) -> d.set(v).add(s.floatValue(), s.floatValue(), s.floatValue()));
+				IrisFunctions.addVectorScalarOpJOML("add", VectorType.VEC4, (v, s, d) -> d.set(v).add(s.floatValue(), s.floatValue(), s.floatValue(), s.floatValue()), (v, s, d) -> d.set(v).add(s.floatValue(), s.floatValue(), s.floatValue(), s.floatValue()));
 			}
 
 			{
@@ -105,6 +109,10 @@ public class IrisFunctions {
 				IrisFunctions.addBinaryOpJOML("subtract", VectorType.VEC2, Vector2f::sub);
 				IrisFunctions.addBinaryOpJOML("subtract", VectorType.VEC3, Vector3f::sub);
 				IrisFunctions.addBinaryOpJOML("subtract", VectorType.VEC4, Vector4f::sub);
+
+				IrisFunctions.addVectorScalarOpJOML("subtract", VectorType.VEC2, (v, s, d) -> d.set(v).sub(s.floatValue(), s.floatValue()), (v, s, d) -> d.set(v).negate().add(s.floatValue(), s.floatValue()));
+				IrisFunctions.addVectorScalarOpJOML("subtract", VectorType.VEC3, (v, s, d) -> d.set(v).sub(s.floatValue(), s.floatValue(), s.floatValue()), (v, s, d) -> d.set(v).negate().add(s.floatValue(), s.floatValue(), s.floatValue()));
+				IrisFunctions.addVectorScalarOpJOML("subtract", VectorType.VEC4, (v, s, d) -> d.set(v).sub(s.floatValue(), s.floatValue(), s.floatValue(), s.floatValue()), (v, s, d) -> d.set(v).negate().add(s.floatValue(), s.floatValue(), s.floatValue(), s.floatValue()));
 			}
 
 			{
@@ -114,6 +122,10 @@ public class IrisFunctions {
 				IrisFunctions.addBinaryOpJOML("multiply", VectorType.VEC2, Vector2f::mul);
 				IrisFunctions.addBinaryOpJOML("multiply", VectorType.VEC3, Vector3f::mul);
 				IrisFunctions.addBinaryOpJOML("multiply", VectorType.VEC4, Vector4f::mul);
+
+				IrisFunctions.addVectorScalarOpJOML("multiply", VectorType.VEC2, (v, s, d) -> d.set(v).mul(s.floatValue()), (v, s, d) -> d.set(v).mul(s.floatValue()));
+				IrisFunctions.addVectorScalarOpJOML("multiply", VectorType.VEC3, (v, s, d) -> d.set(v).mul(s.floatValue()), (v, s, d) -> d.set(v).mul(s.floatValue()));
+				IrisFunctions.addVectorScalarOpJOML("multiply", VectorType.VEC4, (v, s, d) -> d.set(v).mul(s.floatValue()), (v, s, d) -> d.set(v).mul(s.floatValue()));
 			}
 
 			{
@@ -122,6 +134,10 @@ public class IrisFunctions {
 				IrisFunctions.addBinaryOpJOML("divide", VectorType.VEC2, Vector2f::div);
 				IrisFunctions.addBinaryOpJOML("divide", VectorType.VEC3, Vector3f::div);
 				IrisFunctions.addBinaryOpJOML("divide", VectorType.VEC4, Vector4f::div);
+
+				IrisFunctions.addVectorScalarOpJOML("divide", VectorType.VEC2, (v, s, d) -> d.set(v).div(s.floatValue()), (v, s, d) -> d.set(s.floatValue()).div(v));
+				IrisFunctions.addVectorScalarOpJOML("divide", VectorType.VEC3, (v, s, d) -> d.set(v).div(s.floatValue()), (v, s, d) -> d.set(s.floatValue()).div(v));
+				IrisFunctions.addVectorScalarOpJOML("divide", VectorType.VEC4, (v, s, d) -> d.set(v).div(s.floatValue()), (v, s, d) -> d.set(s.floatValue()).div(v));
 			}
 
 			{
@@ -266,12 +282,33 @@ public class IrisFunctions {
 				IrisFunctions.addBinaryOpJOML("min", VectorType.VEC3, Vector3f::min);
 				IrisFunctions.addBinaryOpJOML("min", VectorType.VEC4, Vector4f::min);
 
+				// GLSL also defines min(genType x, float y) and min(float x, genType y).
+				IrisFunctions.addVectorScalarOpJOML("min", VectorType.VEC2,
+					(v, s, d) -> { d.x = Math.min(v.x, s.floatValue()); d.y = Math.min(v.y, s.floatValue()); },
+					(v, s, d) -> { d.x = Math.min(v.x, s.floatValue()); d.y = Math.min(v.y, s.floatValue()); });
+				IrisFunctions.addVectorScalarOpJOML("min", VectorType.VEC3,
+					(v, s, d) -> { d.x = Math.min(v.x, s.floatValue()); d.y = Math.min(v.y, s.floatValue()); d.z = Math.min(v.z, s.floatValue()); },
+					(v, s, d) -> { d.x = Math.min(v.x, s.floatValue()); d.y = Math.min(v.y, s.floatValue()); d.z = Math.min(v.z, s.floatValue()); });
+				IrisFunctions.addVectorScalarOpJOML("min", VectorType.VEC4,
+					(v, s, d) -> { d.x = Math.min(v.x, s.floatValue()); d.y = Math.min(v.y, s.floatValue()); d.z = Math.min(v.z, s.floatValue()); d.w = Math.min(v.w, s.floatValue()); },
+					(v, s, d) -> { d.x = Math.min(v.x, s.floatValue()); d.y = Math.min(v.y, s.floatValue()); d.z = Math.min(v.z, s.floatValue()); d.w = Math.min(v.w, s.floatValue()); });
+
 				IrisFunctions.<II2IFunction>addVectorizable("max", Math::max);
 				IrisFunctions.<FF2FFunction>add("max", Math::max);
 
 				IrisFunctions.addBinaryOpJOML("max", VectorType.VEC2, Vector2f::max);
 				IrisFunctions.addBinaryOpJOML("max", VectorType.VEC3, Vector3f::max);
 				IrisFunctions.addBinaryOpJOML("max", VectorType.VEC4, Vector4f::max);
+
+				IrisFunctions.addVectorScalarOpJOML("max", VectorType.VEC2,
+					(v, s, d) -> { d.x = Math.max(v.x, s.floatValue()); d.y = Math.max(v.y, s.floatValue()); },
+					(v, s, d) -> { d.x = Math.max(v.x, s.floatValue()); d.y = Math.max(v.y, s.floatValue()); });
+				IrisFunctions.addVectorScalarOpJOML("max", VectorType.VEC3,
+					(v, s, d) -> { d.x = Math.max(v.x, s.floatValue()); d.y = Math.max(v.y, s.floatValue()); d.z = Math.max(v.z, s.floatValue()); },
+					(v, s, d) -> { d.x = Math.max(v.x, s.floatValue()); d.y = Math.max(v.y, s.floatValue()); d.z = Math.max(v.z, s.floatValue()); });
+				IrisFunctions.addVectorScalarOpJOML("max", VectorType.VEC4,
+					(v, s, d) -> { d.x = Math.max(v.x, s.floatValue()); d.y = Math.max(v.y, s.floatValue()); d.z = Math.max(v.z, s.floatValue()); d.w = Math.max(v.w, s.floatValue()); },
+					(v, s, d) -> { d.x = Math.max(v.x, s.floatValue()); d.y = Math.max(v.y, s.floatValue()); d.z = Math.max(v.z, s.floatValue()); d.w = Math.max(v.w, s.floatValue()); });
 
 				{
 					// Fake vararg
@@ -366,9 +403,30 @@ public class IrisFunctions {
 					dest.max(min);
 				});
 
-				// TODO: glsl has vecn mix(vecn x, vecn y, float a)
 				IrisFunctions.<FFF2FFunction>add("mix", (x, y, a) -> x + (y - x) * a);
-				// TODO flaot vector lerp
+
+				// GLSL defines mix(genType x, genType y, float a), mix(genType x, float y, float a)
+				// and mix(genType x, genType y, genType a). Packs use all three in shaders.properties.
+				IrisFunctions.addVecVecFloatOpJOML("mix", VectorType.VEC2,
+					(x, y, a, d) -> { d.x = x.x + (y.x - x.x) * a; d.y = x.y + (y.y - x.y) * a; });
+				IrisFunctions.addVecVecFloatOpJOML("mix", VectorType.VEC3,
+					(x, y, a, d) -> { d.x = x.x + (y.x - x.x) * a; d.y = x.y + (y.y - x.y) * a; d.z = x.z + (y.z - x.z) * a; });
+				IrisFunctions.addVecVecFloatOpJOML("mix", VectorType.VEC4,
+					(x, y, a, d) -> { d.x = x.x + (y.x - x.x) * a; d.y = x.y + (y.y - x.y) * a; d.z = x.z + (y.z - x.z) * a; d.w = x.w + (y.w - x.w) * a; });
+
+				IrisFunctions.addVecFloatFloatOpJOML("mix", VectorType.VEC2,
+					(x, y, a, d) -> { d.x = x.x + (y - x.x) * a; d.y = x.y + (y - x.y) * a; });
+				IrisFunctions.addVecFloatFloatOpJOML("mix", VectorType.VEC3,
+					(x, y, a, d) -> { d.x = x.x + (y - x.x) * a; d.y = x.y + (y - x.y) * a; d.z = x.z + (y - x.z) * a; });
+				IrisFunctions.addVecFloatFloatOpJOML("mix", VectorType.VEC4,
+					(x, y, a, d) -> { d.x = x.x + (y - x.x) * a; d.y = x.y + (y - x.y) * a; d.z = x.z + (y - x.z) * a; d.w = x.w + (y - x.w) * a; });
+
+				IrisFunctions.addTernaryOpJOML("mix", VectorType.VEC2,
+					(x, y, a, d) -> { d.x = x.x + (y.x - x.x) * a.x; d.y = x.y + (y.y - x.y) * a.y; });
+				IrisFunctions.addTernaryOpJOML("mix", VectorType.VEC3,
+					(x, y, a, d) -> { d.x = x.x + (y.x - x.x) * a.x; d.y = x.y + (y.y - x.y) * a.y; d.z = x.z + (y.z - x.z) * a.z; });
+				IrisFunctions.addTernaryOpJOML("mix", VectorType.VEC4,
+					(x, y, a, d) -> { d.x = x.x + (y.x - x.x) * a.x; d.y = x.y + (y.y - x.y) * a.y; d.z = x.z + (y.z - x.z) * a.z; d.w = x.w + (y.w - x.w) * a.w; });
 
 				// TODO: glsl has vecn step(float edge, vecn x)
 				IrisFunctions.<II2IFunction>addVectorizable("edge", (edge, x) -> (x < edge) ? 0 : 1);
@@ -1057,6 +1115,102 @@ public class IrisFunctions {
 				T a = (T) functionReturn.objectReturn;
 
 				function.accept(a, this.vector);
+				functionReturn.objectReturn = this.vector;
+			}
+		});
+	}
+
+	/**
+	 * Registers the GLSL scalar-vector arithmetic forms of a binary operator, for example
+	 * {@code vec2 * float} and {@code float * vec2}. Packs write these in shaders.properties
+	 * expressions; without them the resolver reports the whole custom uniform as unresolved
+	 * (measured with MakeUp-UltraFast-9.6, whose fixedTaaCorrection is vec2(pixelSize) * 0.51).
+	 */
+	static <T> void addVectorScalarOpJOML(String name, VectorType.JOMLVector<T> type,
+										  TriConsumer<T, Float, T> vectorThenScalar,
+										  TriConsumer<T, Float, T> scalarThenVector) {
+		builder.add(name, new AbstractTypedFunction(type, new Type[]{type, Type.Float}) {
+			final private T vector = type.create();
+
+			@SuppressWarnings("unchecked")
+			@Override
+			public void evaluateTo(Expression[] params, FunctionContext context, FunctionReturn functionReturn) {
+				params[0].evaluateTo(context, functionReturn);
+				T a = (T) functionReturn.objectReturn;
+
+				params[1].evaluateTo(context, functionReturn);
+				float b = functionReturn.floatReturn;
+
+				vectorThenScalar.accept(a, b, this.vector);
+				functionReturn.objectReturn = this.vector;
+			}
+		});
+		builder.add(name, new AbstractTypedFunction(type, new Type[]{Type.Float, type}) {
+			final private T vector = type.create();
+
+			@SuppressWarnings("unchecked")
+			@Override
+			public void evaluateTo(Expression[] params, FunctionContext context, FunctionReturn functionReturn) {
+				params[0].evaluateTo(context, functionReturn);
+				float a = functionReturn.floatReturn;
+
+				params[1].evaluateTo(context, functionReturn);
+				T b = (T) functionReturn.objectReturn;
+
+				scalarThenVector.accept(b, a, this.vector);
+				functionReturn.objectReturn = this.vector;
+			}
+		});
+	}
+
+	/**
+	 * Registers {@code name(vecN, vecN, float) -> vecN}, the GLSL form of mix(vecN x, vecN y, float a)
+	 * and of future three-argument vector helpers.
+	 */
+	static <T> void addVecVecFloatOpJOML(String name, VectorType.JOMLVector<T> type,
+										 QuadConsumer<T, T, Float, T> function) {
+		builder.add(name, new AbstractTypedFunction(type, new Type[]{type, type, Type.Float}) {
+			final private T vector = type.create();
+
+			@SuppressWarnings("unchecked")
+			@Override
+			public void evaluateTo(Expression[] params, FunctionContext context, FunctionReturn functionReturn) {
+				params[0].evaluateTo(context, functionReturn);
+				T x = (T) functionReturn.objectReturn;
+
+				params[1].evaluateTo(context, functionReturn);
+				T y = (T) functionReturn.objectReturn;
+
+				params[2].evaluateTo(context, functionReturn);
+				float a = functionReturn.floatReturn;
+
+				function.accept(x, y, a, this.vector);
+				functionReturn.objectReturn = this.vector;
+			}
+		});
+	}
+
+	/**
+	 * Registers {@code name(vecN, float, float) -> vecN}, the GLSL form of mix(vecN x, float y, float a).
+	 */
+	static <T> void addVecFloatFloatOpJOML(String name, VectorType.JOMLVector<T> type,
+										   QuadConsumer<T, Float, Float, T> function) {
+		builder.add(name, new AbstractTypedFunction(type, new Type[]{type, Type.Float, Type.Float}) {
+			final private T vector = type.create();
+
+			@SuppressWarnings("unchecked")
+			@Override
+			public void evaluateTo(Expression[] params, FunctionContext context, FunctionReturn functionReturn) {
+				params[0].evaluateTo(context, functionReturn);
+				T x = (T) functionReturn.objectReturn;
+
+				params[1].evaluateTo(context, functionReturn);
+				float y = functionReturn.floatReturn;
+
+				params[2].evaluateTo(context, functionReturn);
+				float a = functionReturn.floatReturn;
+
+				function.accept(x, y, a, this.vector);
 				functionReturn.objectReturn = this.vector;
 			}
 		});

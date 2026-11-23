@@ -10,28 +10,19 @@ import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 
 /**
- * Distant Horizons compatibility facade, reporting DH as present so shader packs accept the setup.
+ * Distant Horizons compatibility facade. DH is a 1.12.2 mod with no 1.10.2 build, so its API
+ * cannot be linked against and its LOD renderer does not run here. By default DH is reported
+ * absent, which makes packs take their normal paths, the only paths whose output this renderer
+ * can actually produce.
  *
- * <p>Distant Horizons (DH) is a 1.12.2 mod with no 1.10.2 build, so its API cannot be linked
- * against and its LOD renderer does not run here. Some shader packs nevertheless refuse to load
- * unless they believe DH is present and usable: they check for it, and a pack that fails that
- * check either aborts or falls back to a degraded pipeline.</p>
- *
- * <p>So this facade answers "DH is present and enabled" and then does nothing. The consequence,
- * stated plainly because it is the whole point: enabling DH-related options in a shader pack is
- * allowed and does not error, but the effect never appears, because there is no DH renderer to
- * produce it. The pack draws exactly what it would draw with those options off.</p>
- *
- * <p>Why this is safe rather than a lie that corrupts rendering: every method here returns a value
- * that a pack consumes as a hint (near plane, far plane, render distance) or an emptiness check
- * (has a depth texture). The values below are the neutral ones: a plausible far-plane pair, the
- * vanilla render distance, and -1 for "no depth texture", which is the same answer a pack gets
- * from upstream when DH itself reports that it has not rendered a frame yet. Nothing is
- * substituted for pixels.</p>
- *
- * <p>The alternative, reporting DH as absent, was tried first and is worse: the packs that require
- * DH then fail to load and the whole shader pipeline goes unused, which is a much larger visible
- * defect than one unsupported feature quietly doing nothing.</p>
+ * <p>Reporting DH as present was the earlier default. Measured on 2026-11-23, it made packs
+ * declare the {@code dhDepthTex} samplers and take their DH branches even though no DH depth
+ * texture exists: the sampler binding handed an invalid texture name to {@code glBindTextureUnit}
+ * and every program use raised {@code GL_INVALID_OPERATION} (thousands per second), and packs
+ * whose DH branches expect LOD buffers read nothing useful. The facade therefore defaults off;
+ * {@code -Dprotactinium.iris.fakeDistantHorizons=true} restores it for a pack that refuses to
+ * load without DH, and the sampler binding ignores negative texture ids so that opt-in cannot
+ * flood the log again.</p>
  */
 public class DHCompat {
     private static final Logger LOG = LogManager.getLogger("Iris");
@@ -39,12 +30,15 @@ public class DHCompat {
     /**
      * What this facade reports to shader packs.
      *
-     * <p>True by design, see the class documentation. Set the system property
-     * {@code protactinium.iris.fakeDistantHorizons=false} to report DH as absent instead, which is
-     * useful when diagnosing whether a pack's behaviour comes from this facade.</p>
+     * <p>Absent by default. Reporting present makes a pack declare the {@code dhDepthTex} samplers
+     * and take its Distant Horizons code paths, but the depth texture behind those samplers does
+     * not exist, so the pack samples nothing useful and the sampler binding used to hand an
+     * invalid texture name to {@code glBindTextureUnit}, raising {@code GL_INVALID_OPERATION} on
+     * every program use. A pack that genuinely requires DH can opt back in with
+     * {@code -Dprotactinium.iris.fakeDistantHorizons=true}.</p>
      */
     private static final boolean REPORT_PRESENT =
-            !"false".equalsIgnoreCase(System.getProperty("protactinium.iris.fakeDistantHorizons", "true"));
+            "true".equalsIgnoreCase(System.getProperty("protactinium.iris.fakeDistantHorizons", "false"));
 
     private static final Matrix4f tempProj = new Matrix4f();
 
@@ -126,11 +120,11 @@ public class DHCompat {
     /**
      * Whether the pack should be told that DH is rendering.
      *
-     * <p>This is what gates the {@code DISTANT_HORIZONS} GLSL macro and the {@code dh* } uniforms a
-     * pack compiles against, so it has to agree with {@link #isDhPipelineAvailable()}: a pack that
-     * decides at load time that DH is present and then finds the macro undefined will fail to
-     * compile its own shaders. It reports true, and the pack's DH code paths then run against the
-     * neutral values this class returns.</p>
+     * <p>This gates the {@code DISTANT_HORIZONS} GLSL macro and the {@code dh*} uniforms a pack
+     * compiles against, so it has to agree with {@link #isDhPipelineAvailable()}: a pack that
+     * decides at load time that DH is present and then finds the macro undefined would fail to
+     * compile its own shaders. It follows {@link #REPORT_PRESENT}; false means packs see the
+     * normal, non-DH pipeline this renderer can satisfy.</p>
      */
     public static boolean hasRenderingEnabled() {
         return REPORT_PRESENT;

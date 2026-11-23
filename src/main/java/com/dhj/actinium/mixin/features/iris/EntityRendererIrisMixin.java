@@ -145,6 +145,13 @@ public abstract class EntityRendererIrisMixin implements IResourceManagerReloadL
         pipeline.renderPreSkyPrepare();
         IrisGlDebug.markStage("mixin:pre-sky-prepare:done");
         IrisGlDebug.recordWorldPassStage("iris-begin-to-sky");
+
+        // The camera model view is the one the whole world pass must use. Later stages (sky, weather,
+        // clouds, shadows) run on the same OpenGL matrix stack; a stage that does not restore it
+        // leaves every entity drawn against the wrong camera. Keep the camera here and put it back
+        // before the entity loop.
+        actinium$cameraSnapshot.set(com.gtnewhorizons.angelica.glsm.GLSMMatrices.getModelViewMatrix());
+        actinium$cameraSnapshotValid = true;
     }
 
     @Inject(
@@ -195,7 +202,16 @@ public abstract class EntityRendererIrisMixin implements IResourceManagerReloadL
         if (AngelicaConfig.entityShadowReplayEnabled()) {
             EntityShadowReplay.setMainView(camera);
         }
+        if (actinium$cameraSnapshotValid) {
+            com.gtnewhorizons.angelica.glsm.GLSMMatrices.setModelViewMatrix(actinium$cameraSnapshot);
+        }
     }
+
+    @Unique
+    private static final org.joml.Matrix4f actinium$cameraSnapshot = new org.joml.Matrix4f();
+
+    @Unique
+    private static boolean actinium$cameraSnapshotValid;
 
     @Inject(
         method = "renderWorldPass(IFJ)V",

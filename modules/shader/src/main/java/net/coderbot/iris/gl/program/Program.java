@@ -36,13 +36,46 @@ public final class Program extends GlResource {
 		return program != 0 && managedBindProgram == program;
 	}
 
+	/** Set with -Dactinium.probeProgramSteps=true to attribute a GL error to the step that raised it. */
+	private static final boolean PROBE_STEPS = Boolean.getBoolean("actinium.probeProgramSteps");
+	private static final int PROBE_STEP_LIMIT = 12;
+	private static final java.util.Map<String, Integer> probeStepCounts = new java.util.HashMap<>();
+
+	private static void probeStep(String step, int program) {
+		final int error = org.lwjgl.opengl.GL11.glGetError();
+		if (error == 0) {
+			return;
+		}
+		final int seen = probeStepCounts.merge(step, Integer.valueOf(1), Integer::sum).intValue();
+		if (seen <= PROBE_STEP_LIMIT) {
+			net.coderbot.iris.Iris.logger.warn("[program-step] program={} step={} error={} cachedActive={} seen={}",
+				Integer.valueOf(program), step, Integer.valueOf(error),
+				Integer.valueOf(GLSMPrograms.getActiveProgram()), Integer.valueOf(seen));
+		}
+	}
+
 	public void use() {
+		if (PROBE_STEPS) {
+			probeStep("enter", getGlId());
+		}
 		RenderSystem.memoryBarrier(GL42.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL42.GL_TEXTURE_FETCH_BARRIER_BIT | GL43.GL_SHADER_STORAGE_BARRIER_BIT);
 		bindManaged(getGlId());
+		if (PROBE_STEPS) {
+			probeStep("bind", getGlId());
+		}
 
 		uniforms.update();
+		if (PROBE_STEPS) {
+			probeStep("uniforms", getGlId());
+		}
 		samplers.update();
+		if (PROBE_STEPS) {
+			probeStep("samplers", getGlId());
+		}
 		images.update();
+		if (PROBE_STEPS) {
+			probeStep("images", getGlId());
+		}
 	}
 
 	static void bindManaged(int program) {

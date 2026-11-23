@@ -38,6 +38,7 @@ public final class IrisGlDebug {
     private static final Set<String> LOGGED_CELERITAS_STATES = ConcurrentHashMap.newKeySet();
     private static final Set<String> LOGGED_FULLSCREEN_PROGRAMS = ConcurrentHashMap.newKeySet();
     private static final Set<String> LOGGED_FULLSCREEN_STATES = ConcurrentHashMap.newKeySet();
+    private static final Set<String> LOGGED_SKY_DIRECTIONS = ConcurrentHashMap.newKeySet();
 	private static final Map<String, Integer> FRAMEBUFFER_SAMPLE_COUNTS = new ConcurrentHashMap<>();
 	private static final Map<String, Integer> TEXTURE_SAMPLE_COUNTS = new ConcurrentHashMap<>();
 	private static final Map<String, Integer> MATERIAL_SAMPLE_COUNTS = new ConcurrentHashMap<>();
@@ -106,11 +107,16 @@ public final class IrisGlDebug {
 			return Boolean.parseBoolean(override);
 		}
 
-        // Forced on for the current diagnosis: the composite stage is where the wrong picture is
-        // suspected to originate, and the sampler bindings and depth samples it prints are the only
-        // cheap way to see what those stages actually read. The setting remains the switch once the
-        // defect is located.
-        return true;
+        // Opt-in. This capture reads back pixels (glReadPixels) and logs whole GL state dumps, so
+        // leaving it on costs frame time and floods the log. It was forced on while the composite
+        // picture was under diagnosis; that defect is now measured fixed (Photon at noon: sky
+        // region mean luminance 134.5, 0% near-black pixels, full composite chain, 0 compile
+        // errors), so the config switch is authoritative again. Default is false.
+        try {
+            return IrisDebugOptions.enableActiniumGlDebug();
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     public static boolean isCloudControlDebugEnabled() {
@@ -2457,6 +2463,60 @@ public final class IrisGlDebug {
         );
     }
 
+    /**
+     * One-shot dump of the values the pack's sky reconstruction depends on. A pack with a discarded
+     * gbuffers_skybasic computes the visible sky in a deferred/composite pass from the world-space
+     * view direction and the celestial directions; a zero direction or an identity inverse there
+     * leaves the sky black or flat with every draw reporting success.
+     */
+    public static void logSkyDirections(String stage, String source, int program) {
+        if (!shouldCaptureGlState()) {
+            return;
+        }
+
+        if (!LOGGED_SKY_DIRECTIONS.add(stage + ":" + source + ":" + program)) {
+            return;
+        }
+
+        logDebugInfo(
+            "sky-directions stage={} source={} program={} sun_dir={} light_dir={} upPosition={} sunPosition={} sunAngle={} worldTime={} time_sunrise={} time_noon={} time_sunset={} time_midnight={} me_weight={} blue_hour={} eye_skylight={} modelViewInverse={} projectionInverse={}",
+            stage,
+            source,
+            program,
+            getVectorUniform(program, "sun_dir"),
+            getVectorUniform(program, "light_dir"),
+            getVectorUniform(program, "upPosition"),
+            getVectorUniform(program, "sunPosition"),
+            getFloatUniform(program, "sunAngle"),
+            getIntUniform(program, "worldTime"),
+            getFloatUniform(program, "time_sunrise"),
+            getFloatUniform(program, "time_noon"),
+            getFloatUniform(program, "time_sunset"),
+            getFloatUniform(program, "time_midnight"),
+            getFloatUniform(program, "me_weight"),
+            getFloatUniform(program, "blue_hour"),
+            getFloatUniform(program, "eye_skylight"),
+            getMatrixUniform(program, "gbufferModelViewInverse"),
+            getMatrixUniform(program, "gbufferProjectionInverse")
+        );
+    }
+
+    private static String getVectorUniform(int program, String name) {
+        if (program <= 0) {
+            return "missing";
+        }
+
+        int location = GL20.glGetUniformLocation(program, name);
+        if (location < 0) {
+            return "missing";
+        }
+
+        FloatBuffer values = BufferUtils.createFloatBuffer(16);
+        GL20.glGetUniformfv(program, location, values);
+        return String.format(java.util.Locale.ROOT, "[%.4f,%.4f,%.4f,%.4f]",
+            values.get(0), values.get(1), values.get(2), values.get(3));
+    }
+
     private static String getMatrixModeMatrix(int pname) {
         FloatBuffer values = BufferUtils.createFloatBuffer(16);
         GL11.glGetFloatv(pname, values);
@@ -2801,8 +2861,15 @@ public final class IrisGlDebug {
         int mainWidth = main != null ? main.framebufferWidth : -1;
         int mainHeight = main != null ? main.framebufferHeight : -1;
 
+        // The cache-aware query and the real one, side by side: a mismatch means a program was
+        // bound outside GLSM's view, and every uniform uploaded afterwards went to the wrong
+        // program, which is a GL_INVALID_OPERATION on each upload.
+        final int cachedProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+        final int realProgram = com.gtnewhorizons.angelica.glsm.backend.BackendManager.RENDER_BACKEND
+            .getInteger(GL20.GL_CURRENT_PROGRAM);
+
         LOGGER.error(
-            "checkpoint={} error={} fb={} readFb={} drawFb={} drawBuffer={} readBuffer={} program={} vao={} viewport=[{},{},{},{}] mainFbo={} mainTex={} mainSize={}x{} display={}x{}",
+            "checkpoint={} error={} fb={} readFb={} drawFb={} drawBuffer={} readBuffer={} program={} realProgram={} vao={} viewport=[{},{},{},{}] mainFbo={} mainTex={} mainSize={}x{} display={}x{}",
             stage,
             error,
             GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING),
@@ -2810,7 +2877,8 @@ public final class IrisGlDebug {
             GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING),
             GL11.glGetInteger(GL11.GL_DRAW_BUFFER),
             GL11.glGetInteger(GL11.GL_READ_BUFFER),
-            GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM),
+            cachedProgram,
+            realProgram,
             GL11.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING),
             VIEWPORT.get(0),
             VIEWPORT.get(1),

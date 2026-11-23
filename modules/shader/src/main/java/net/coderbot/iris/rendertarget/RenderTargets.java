@@ -48,6 +48,8 @@ public class RenderTargets {
 
 	private int cachedWidth;
 	private int cachedHeight;
+	/** Whether the zero-size resize of a minimized window was already reported. */
+	private boolean loggedZeroSize;
 	@Getter
     private boolean fullClearRequired;
 	private boolean translucentDepthDirty;
@@ -136,6 +138,21 @@ public class RenderTargets {
 	}
 
     public boolean resizeIfNeeded(int newDepthBufferVersion, int newDepthTextureId, int newWidth, int newHeight, DepthBufferFormat newDepthFormat, PackDirectives packDirectives) {
+        // A minimized window reports a 0x0 display for a frame. Resizing the render targets to that
+        // size allocates zero-sized textures, and the pass framebuffers built from them are then
+        // INCOMPLETE_ATTACHMENT: the next beginLevelRendering throws and takes the client down.
+        // Keep the last valid size until the window has a real one again.
+        if (newWidth <= 0 || newHeight <= 0) {
+            if (!loggedZeroSize) {
+                loggedZeroSize = true;
+                Iris.logger.info("Ignoring render target resize to {}x{} (window minimized); keeping {}x{}",
+                        Integer.valueOf(newWidth), Integer.valueOf(newHeight),
+                        Integer.valueOf(cachedWidth), Integer.valueOf(cachedHeight));
+            }
+            return false;
+        }
+        loggedZeroSize = false;
+
         boolean recreateDepth = false;
         if (cachedDepthBufferVersion != newDepthBufferVersion) {
             recreateDepth = true;

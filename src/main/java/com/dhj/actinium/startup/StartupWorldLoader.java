@@ -2,6 +2,9 @@ package com.dhj.actinium.startup;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiMainMenu;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -29,6 +32,24 @@ public final class StartupWorldLoader {
     /** Whether the attempt has already been made, so the check runs once. */
     private static boolean attempted;
 
+    /**
+     * Opens the world on the first client tick after the title screen initializes.
+     *
+     * <p>The title screen is shown before {@code Minecraft}'s loading screen exists, and launching
+     * the integrated server from {@code initGui} therefore dereferences a null loading screen and
+     * throws. One tick later startup has finished and the launch follows the normal path.</p>
+     */
+    private static final Object TICK_HANDLER = new Object() {
+        @SubscribeEvent
+        public void onClientTick(TickEvent.ClientTickEvent event) {
+            if (event.phase != TickEvent.Phase.END) {
+                return;
+            }
+            MinecraftForge.EVENT_BUS.unregister(TICK_HANDLER);
+            launch();
+        }
+    };
+
     private StartupWorldLoader() {}
 
     /** Returns whether automatic world loading was requested. */
@@ -50,6 +71,10 @@ public final class StartupWorldLoader {
             return;
         }
         attempted = true;
+        MinecraftForge.EVENT_BUS.register(TICK_HANDLER);
+    }
+
+    private static void launch() {
         try {
             Minecraft minecraft = Minecraft.getMinecraft();
             if (minecraft == null) {

@@ -795,7 +795,7 @@ public class Iris {
                 //     so we don't need to do the UTF-8 workaround here.
                 properties.load(is);
             } catch (IOException e) {
-                // TODO: Better error handling
+                logger.warn("Could not read shader pack configuration {}; continuing with defaults", path, e);
                 return Optional.empty();
             }
         }
@@ -818,7 +818,7 @@ public class Iris {
                 properties.store(out, null);
             }
         } catch (IOException e) {
-            // TODO: Better error handling
+            logger.warn("Could not write shader pack configuration {}; the change will not persist", path, e);
         }
     }
 

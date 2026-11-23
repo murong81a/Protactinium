@@ -15,7 +15,9 @@ param(
     # Set when the goal is to see the title screen rather than to load a world.
     [switch]$QuitAfterLoad,
     # Save directory name to open automatically, so the terrain renderer can be exercised.
-    [string]$AutoloadWorld = ''
+    [string]$AutoloadWorld = '',
+    # Extra JVM arguments, e.g. -ExtraJvm '-Dactinium.probeProgramSteps=true'.
+    [string[]]$ExtraJvm = @()
 )
 
 $ErrorActionPreference = 'Stop'
@@ -81,6 +83,8 @@ $jvmArgs = @(
     '-Dfml.ignoreInvalidMinecraftCertificates=true',
     '-Dfml.ignorePatchDiscrepancies=true'
 )
+
+if ($ExtraJvm.Count -gt 0) { $jvmArgs += $ExtraJvm }
 
 # Optional: open a world automatically so the terrain renderer can be exercised without a click.
 # Pass -AutoloadWorld '<save directory name>' to enable it; the title screen is drawn either way.

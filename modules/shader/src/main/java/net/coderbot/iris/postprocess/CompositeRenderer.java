@@ -362,6 +362,7 @@ public class CompositeRenderer {
             IrisGlDebug.check("composite:use-program");
 
             this.customUniforms.push(renderPass.program);
+            IrisGlDebug.logSkyDirections(this.textureStage.name(), renderPass.sourceName, renderPass.program.getProgramId());
             IrisGlDebug.check("composite:uniforms");
             IrisGlDebug.logFullscreenPassState(this.textureStage.name(), renderPass.sourceName, renderPass.program.getProgramId(), renderPass.drawBuffers, renderPass.stageReadsFromAlt, this.renderTargets);
             IrisGlDebug.logWorldPassState(this.textureStage.name(), "fullscreen", renderPass.sourceName);

@@ -11,9 +11,23 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class ProgramSet {
+	private static final Pattern COLORTEX_REFERENCE = Pattern.compile("colortex(\\d+)");
+	private static final Pattern COLOR_IMAGE_REFERENCE = Pattern.compile("colorimg(\\d+)");
+	private static final Pattern DRAWBUFFERS_DIRECTIVE = Pattern.compile("DRAWBUFFERS\\s*:\\s*([0-9]+)");
+	private static final Pattern RENDERTARGETS_DIRECTIVE = Pattern.compile("RENDERTARGETS\\s*:\\s*([0-9,\t ]+)");
+
 	private final PackDirectives packDirectives;
+
+	/**
+	 * Highest colortex index this program set mentions. The renderer always allocates the historical
+	 * colortex0..15 range, and only grows past it when a program references a higher buffer, so the
+	 * 32-buffer limit does not cost every pack the memory for 32 targets.
+	 */
+	private int maxReferencedRenderTarget = -1;
 
 	private final ProgramSource shadow;
 	private final ProgramSource shadowWater;
@@ -150,6 +164,11 @@ public class ProgramSet {
 		}
 		this.compositeFinal = readProgramSource(directory, sourceProvider, "final", this, shaderProperties);
 		this.finalCompute = readComputeArray(directory, sourceProvider, "final");
+
+		// Now that every program source has been read, drop the targets this pack never mentions.
+		// The directives are constructed earlier because ProgramDirectives needs the explicit-flip
+		// settings while the sources are being read.
+		this.packDirectives.getRenderTargetDirectives().retainTargetsUpTo(usedRenderTargetCount());
 
 		locateDirectives();
 
@@ -518,6 +537,67 @@ public class ProgramSet {
 		return pack;
 	}
 
+	/**
+	 * Records the highest colortex index a shader source refers to. Detected through sampler/image
+	 * names (colortexN, colorimgN) and the write target lists (DRAWBUFFERS / RENDERTARGETS). The
+	 * scan is deliberately generous: a false positive only allocates a target that would otherwise
+	 * be skipped, while a missed reference would make pipeline creation reject a draw buffer.
+	 */
+	private void noteRenderTargetUse(String source) {
+		if (source == null) {
+			return;
+		}
+
+		final Matcher colortex = COLORTEX_REFERENCE.matcher(source);
+		while (colortex.find()) {
+			noteRenderTargetIndex(parseIndex(colortex.group(1)));
+		}
+
+		final Matcher image = COLOR_IMAGE_REFERENCE.matcher(source);
+		while (image.find()) {
+			noteRenderTargetIndex(parseIndex(image.group(1)));
+		}
+
+		// DRAWBUFFERS is a list of single digits: DRAWBUFFERS:012345 means buffers 0..5.
+		final Matcher drawBuffers = DRAWBUFFERS_DIRECTIVE.matcher(source);
+		while (drawBuffers.find()) {
+			final String digits = drawBuffers.group(1);
+			for (int i = 0; i < digits.length(); i++) {
+				noteRenderTargetIndex(digits.charAt(i) - '0');
+			}
+		}
+
+		// RENDERTARGETS takes comma or space separated indices, so it can address buffers above 9.
+		final Matcher renderTargets = RENDERTARGETS_DIRECTIVE.matcher(source);
+		while (renderTargets.find()) {
+			for (String part : renderTargets.group(1).split("[,\\s]+")) {
+				if (!part.isEmpty()) {
+					noteRenderTargetIndex(parseIndex(part));
+				}
+			}
+		}
+	}
+
+	private void noteRenderTargetIndex(int index) {
+		if (index >= 0 && index < IrisLimits.MAX_COLOR_BUFFERS && index > maxReferencedRenderTarget) {
+			maxReferencedRenderTarget = index;
+		}
+	}
+
+	private static int parseIndex(String value) {
+		try {
+			return Integer.parseInt(value);
+		} catch (NumberFormatException e) {
+			Iris.logger.debug("Ignoring malformed colortex index '{}'", value);
+			return -1;
+		}
+	}
+
+	private int usedRenderTargetCount() {
+		return Math.min(IrisLimits.MAX_COLOR_BUFFERS,
+				Math.max(IrisLimits.BASE_COLOR_BUFFERS, maxReferencedRenderTarget + 1));
+	}
+
 	private static ProgramSource readProgramSource(AbsolutePackPath directory,
 												   Function<AbsolutePackPath, String> sourceProvider, String program,
 												   ProgramSet programSet, ShaderProperties properties) {
@@ -547,6 +627,12 @@ public class ProgramSet {
 		AbsolutePackPath fragmentPath = directory.resolve(program + ".fsh");
 		String fragmentSource = sourceProvider.apply(fragmentPath);
 
+		programSet.noteRenderTargetUse(vertexSource);
+		programSet.noteRenderTargetUse(geometrySource);
+		programSet.noteRenderTargetUse(tessControlSource);
+		programSet.noteRenderTargetUse(tessEvalSource);
+		programSet.noteRenderTargetUse(fragmentSource);
+
 		return new ProgramSource(program, vertexSource, geometrySource, tessControlSource, tessEvalSource,
 				fragmentSource, programSet, properties, defaultBlendModeOverride);
 	}
@@ -556,6 +642,7 @@ public class ProgramSet {
 												   ProgramSet programSet) {
 		AbsolutePackPath computePath = directory.resolve(program + ".csh");
 		String computeSource = sourceProvider.apply(computePath);
+		programSet.noteRenderTargetUse(computeSource);
 
 		if (computeSource == null) {
 			return null;

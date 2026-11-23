@@ -75,6 +75,10 @@ public final class ShaderManager {
         return getInstance().texCoordStack;
     }
 
+    public static boolean isEnabled() {
+        return enabled;
+    }
+
     public static synchronized void enable() {
         warmUp();
         enabled = true;

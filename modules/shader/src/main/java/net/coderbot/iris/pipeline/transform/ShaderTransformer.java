@@ -214,8 +214,10 @@ public class ShaderTransformer {
 
         String input = GlslTransformUtils.replaceTexture(compute);
         input = GlslTransformUtils.renameReservedWords(input, versionInt);
+        input = GlslTransformUtils.normalizeFloatSuffixes(input);
+        input = GlslTransformUtils.enableGpuShader5ForFma(input, versionInt);
 
-        final var parsedShader = ShaderParser.parseShader(input);
+        final var parsedShader = parseChecked(input, "compute");
         final var transformer = new Transformer(parsedShader.full());
 
         doTransform(transformer, patchType, parameters, versionInt);
@@ -231,7 +233,11 @@ public class ShaderTransformer {
 
         final var extensions = versionPattern.matcher(GlslTransformUtils.getFormattedShader(parsedShader.pre(), "")).replaceFirst("").trim();
 
-        final String finalHeader = profileString + (extensions.isEmpty() ? "" : "\n" + extensions);
+        // profileString already ends with a newline. A second one here used to leave a blank line
+        // between #version and #extension; the GLSL pre-parser stops its preamble at that blank
+        // line, so a later re-parse (the opaque-pass alpha discard transformer) printed the shader
+        // without its extensions and fma then failed to compile below #version 400.
+        final String finalHeader = profileString + extensions;
         final StringBuilder formattedShaderBuilder = new StringBuilder();
 
         transformer.mutateTree(tree -> {
@@ -315,7 +321,10 @@ public class ShaderTransformer {
                 input = CompatibilityTransformer.patchCloudMovementTime(input);
             }
 
-            final var parsedShader = ShaderParser.parseShader(input);
+            input = GlslTransformUtils.normalizeFloatSuffixes(input);
+            input = GlslTransformUtils.enableGpuShader5ForFma(input, versionInt);
+
+            final var parsedShader = parseChecked(input, type.name());
             final var transformer = new Transformer(parsedShader.full());
 
             doTransform(transformer, patchType, parameters, versionInt);
@@ -323,7 +332,7 @@ public class ShaderTransformer {
             final var extensions = versionPattern.matcher(GlslTransformUtils.getFormattedShader(parsedShader.pre(), "")).replaceFirst("").trim();
 
             types.put(type, transformer);
-            prepatched.put(type, profileString + (extensions.isEmpty() ? "" : "\n" + extensions));
+            prepatched.put(type, profileString + extensions);
         }
         CompatibilityTransformer.transformGrouped(types, parameters);
         if (BackendManager.RENDER_BACKEND.isSDLGPU()) {
@@ -362,6 +371,27 @@ public class ShaderTransformer {
         watch.stop();
         Iris.logger.info("[Load #{}] Transformed shader for {} in {}", Iris.getShaderPackLoadId(), patchType.name(), watch);
         return result;
+    }
+
+    /**
+     * Parses a shader stage and rejects a recovered tree.
+     *
+     * <p>ANTLR recovers from syntax errors silently and the printer then writes the recovery
+     * artifacts into the output, including literal {@code <missing ';'>} markers and duplicated
+     * function bodies. The driver rejects that output and the whole pipeline is disabled anyway,
+     * so fail here where the counts and stage are in the message. Sources that trip this need a
+     * pre-parse normalization, as {@link GlslTransformUtils#normalizeFloatSuffixes} does for the
+     * C-style float suffix.</p>
+     */
+    private static ShaderParser.ParsedShader parseChecked(String source, String stage) {
+        final ShaderParser.ParsedShader parsed = ShaderParser.parseShader(source);
+        final int directiveErrors = parsed.preParser().getNumberOfSyntaxErrors();
+        final int syntaxErrors = parsed.parser().getNumberOfSyntaxErrors();
+        if (directiveErrors != 0 || syntaxErrors != 0) {
+            throw new IllegalStateException("GLSL parse failed for " + stage + ": " + syntaxErrors
+                    + " syntax error(s), " + directiveErrors + " directive error(s)");
+        }
+        return parsed;
     }
 
     private static String hoistTransformedVersion(String source, ShaderType stage) {

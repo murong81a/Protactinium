@@ -142,6 +142,7 @@ public class StandardMacros {
 		define(standardDefines, "DH_BLOCK_ILLUMINATED", String.valueOf(15));
 
         define(standardDefines, "ACTINIUM_VERSION", makeActiniumVersion());
+		define(standardDefines, "MAX_COLOR_BUFFERS", String.valueOf(net.coderbot.iris.shaderpack.IrisLimits.MAX_COLOR_BUFFERS));
 		define(standardDefines, "MC_HAND_DEPTH", Float.toString(HandRenderer.DEPTH));
 
 		TextureFormat textureFormat = TextureFormatLoader.getFormat();
@@ -388,22 +389,84 @@ public class StandardMacros {
 			}
 		}
 
-		// Modern biome name aliases - map modern names to 1.7.10 equivalents(ish)
+		// Modern biome name aliases - map modern names to the closest 1.10.2 biome. Packs refer to
+		// these names in shaders.properties custom uniform expressions too, where the properties
+		// preprocessor substitutes them as macros; a missing name is left as an identifier and the
+		// whole custom uniform then fails to resolve (measured with Solas-Shader-V3.9).
         addModernBiomeAlias(defines, "SWAMP", Biomes.SWAMPLAND);
-        addModernBiomeAlias(defines, "SWAMP_HILLS", Biomes.SWAMPLAND); // No hills variant in 1.12
+        addModernBiomeAlias(defines, "SWAMP_HILLS", Biomes.SWAMPLAND); // No hills variant in 1.10.2
+        addModernBiomeAlias(defines, "MUSHROOM_FIELDS", Biomes.MUSHROOM_ISLAND);
+        addModernBiomeAlias(defines, "MUSHROOM_FIELD_SHORE", Biomes.MUSHROOM_ISLAND_SHORE);
+        addModernBiomeAlias(defines, "DARK_FOREST", Biomes.ROOFED_FOREST);
+        addModernBiomeAlias(defines, "DARK_FOREST_HILLS", Biomes.MUTATED_ROOFED_FOREST);
+        addModernBiomeAlias(defines, "SPARSE_JUNGLE", Biomes.JUNGLE_EDGE);
+        addModernBiomeAlias(defines, "FLOWER_FOREST", Biomes.MUTATED_FOREST);
+        addModernBiomeAlias(defines, "SUNFLOWER_PLAINS", Biomes.MUTATED_PLAINS);
+        addModernBiomeAlias(defines, "TALL_BIRCH_FOREST", Biomes.MUTATED_BIRCH_FOREST);
+        addModernBiomeAlias(defines, "OLD_GROWTH_BIRCH_FOREST", Biomes.MUTATED_BIRCH_FOREST);
+        addModernBiomeAlias(defines, "WINDSWEPT_HILLS", Biomes.EXTREME_HILLS);
+        addModernBiomeAlias(defines, "WINDSWEPT_FOREST", Biomes.EXTREME_HILLS_WITH_TREES);
+        addModernBiomeAlias(defines, "WINDSWEPT_GRAVELLY_HILLS", Biomes.EXTREME_HILLS_EDGE);
+        addModernBiomeAlias(defines, "STONY_PEAKS", Biomes.EXTREME_HILLS);
+        addModernBiomeAlias(defines, "STONY_SHORE", Biomes.STONE_BEACH);
+        addModernBiomeAlias(defines, "GIANT_TREE_TAIGA", Biomes.REDWOOD_TAIGA);
+        addModernBiomeAlias(defines, "GIANT_TREE_TAIGA_HILLS", Biomes.REDWOOD_TAIGA_HILLS);
+        addModernBiomeAlias(defines, "GIANT_SPRUCE_TAIGA", Biomes.MUTATED_REDWOOD_TAIGA);
+        addModernBiomeAlias(defines, "OLD_GROWTH_PINE_TAIGA", Biomes.REDWOOD_TAIGA);
+        addModernBiomeAlias(defines, "OLD_GROWTH_SPRUCE_TAIGA", Biomes.MUTATED_REDWOOD_TAIGA);
+        addModernBiomeAlias(defines, "SNOWY_PLAINS", Biomes.ICE_PLAINS);
+        addModernBiomeAlias(defines, "SNOWY_MOUNTAINS", Biomes.ICE_MOUNTAINS);
+        addModernBiomeAlias(defines, "SNOWY_BEACH", Biomes.COLD_BEACH);
+        addModernBiomeAlias(defines, "SNOWY_TAIGA", Biomes.COLD_TAIGA);
+        addModernBiomeAlias(defines, "SNOWY_TAIGA_HILLS", Biomes.COLD_TAIGA_HILLS);
+        addModernBiomeAlias(defines, "FROZEN_PEAKS", Biomes.ICE_MOUNTAINS);
+        addModernBiomeAlias(defines, "SNOWY_SLOPES", Biomes.ICE_MOUNTAINS);
+        addModernBiomeAlias(defines, "JAGGED_PEAKS", Biomes.ICE_MOUNTAINS);
+        addModernBiomeAlias(defines, "BADLANDS", Biomes.MESA);
+        addModernBiomeAlias(defines, "WOODED_BADLANDS", Biomes.MESA_ROCK);
+        addModernBiomeAlias(defines, "ERODED_BADLANDS", Biomes.MESA_CLEAR_ROCK);
+        addModernBiomeAlias(defines, "BADLANDS_PLATEAU", Biomes.MUTATED_MESA);
+        addModernBiomeAlias(defines, "WOODED_BADLANDS_PLATEAU", Biomes.MUTATED_MESA_ROCK);
+        addModernBiomeAlias(defines, "MODIFIED_BADLANDS_PLATEAU", Biomes.MUTATED_MESA);
+        addModernBiomeAlias(defines, "WARM_OCEAN", Biomes.OCEAN);
+        addModernBiomeAlias(defines, "LUKEWARM_OCEAN", Biomes.OCEAN);
+        addModernBiomeAlias(defines, "COLD_OCEAN", Biomes.OCEAN);
+        addModernBiomeAlias(defines, "DEEP_WARM_OCEAN", Biomes.DEEP_OCEAN);
+        addModernBiomeAlias(defines, "DEEP_LUKEWARM_OCEAN", Biomes.DEEP_OCEAN);
+        addModernBiomeAlias(defines, "DEEP_COLD_OCEAN", Biomes.DEEP_OCEAN);
+        addModernBiomeAlias(defines, "DEEP_FROZEN_OCEAN", Biomes.FROZEN_OCEAN);
+        addModernBiomeAlias(defines, "THE_END", Biomes.SKY);
+        addModernBiomeAlias(defines, "SMALL_END_ISLANDS", Biomes.SKY);
+        addModernBiomeAlias(defines, "END_MIDLANDS", Biomes.SKY);
+        addModernBiomeAlias(defines, "END_HIGHLANDS", Biomes.SKY);
+        addModernBiomeAlias(defines, "END_BARRENS", Biomes.SKY);
 
-		// Modern biomes that don't exist in 1.7.10 - add dummy IDs that will never match
-		// This allows shader expressions to parse without errors while always evaluating to false/0
-		// Using negative IDs to avoid conflicts with actual biome IDs
-		defines.put("BIOME_NETHER_WASTES", "-1000");
-		defines.put("BIOME_SOUL_SAND_VALLEY", "-1001");
-		defines.put("BIOME_CRIMSON_FOREST", "-1002");
-		defines.put("BIOME_WARPED_FOREST", "-1003");
-		defines.put("BIOME_BASALT_DELTAS", "-1004");
-		defines.put("BIOME_LUSH_CAVES", "-1005");
-		defines.put("BIOME_PALE_GARDEN", "-1006");
+		// Modern biomes that don't exist in 1.10.2 - add dummy IDs that will never match. This
+		// allows shader expressions to parse without errors while always evaluating to false/0.
+		// Negative IDs avoid conflicts with actual biome IDs; a local counter keeps the values
+		// stable across calls, because these defines are part of the preprocessed-source cache key.
+		final int[] nextDummyId = {-1000};
+		addDummyBiome(defines, nextDummyId, "NETHER_WASTES");
+		addDummyBiome(defines, nextDummyId, "SOUL_SAND_VALLEY");
+		addDummyBiome(defines, nextDummyId, "CRIMSON_FOREST");
+		addDummyBiome(defines, nextDummyId, "WARPED_FOREST");
+		addDummyBiome(defines, nextDummyId, "BASALT_DELTAS");
+		addDummyBiome(defines, nextDummyId, "LUSH_CAVES");
+		addDummyBiome(defines, nextDummyId, "DRIPSTONE_CAVES");
+		addDummyBiome(defines, nextDummyId, "PALE_GARDEN");
+		addDummyBiome(defines, nextDummyId, "DEEP_DARK");
+		addDummyBiome(defines, nextDummyId, "MANGROVE_SWAMP");
+		addDummyBiome(defines, nextDummyId, "BAMBOO_JUNGLE");
+		addDummyBiome(defines, nextDummyId, "CHERRY_GROVE");
+		addDummyBiome(defines, nextDummyId, "GROVE");
+		addDummyBiome(defines, nextDummyId, "MEADOW");
+		addDummyBiome(defines, nextDummyId, "ICE_SPIKES");
 
 		return defines;
+	}
+
+	private static void addDummyBiome(Map<String, String> defines, int[] nextId, String modernName) {
+		defines.put("BIOME_" + modernName, String.valueOf(nextId[0]--));
 	}
 
     private static void addModernBiomeAlias(Map<String, String> defines, String modernName, Biome biome) {

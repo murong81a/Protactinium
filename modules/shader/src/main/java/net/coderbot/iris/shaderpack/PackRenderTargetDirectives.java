@@ -5,6 +5,7 @@ import com.google.common.collect.ImmutableSet;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntIterator;
 import it.unimi.dsi.fastutil.ints.IntList;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.gl.texture.InternalTextureFormat;
@@ -70,6 +71,20 @@ public class PackRenderTargetDirectives {
 
 	public Map<Integer, RenderTargetSettings> getRenderTargetSettings() {
 		return Collections.unmodifiableMap(renderTargetSettings);
+	}
+
+	/**
+	 * Drops the targets at or above {@code count}. Called once the pack's program sources have been
+	 * read, so packs that stay within the historical colortex range do not pay for the extra targets
+	 * the 32-buffer limit made addressable.
+	 */
+	public void retainTargetsUpTo(int count) {
+		final IntIterator iterator = renderTargetSettings.keySet().iterator();
+		while (iterator.hasNext()) {
+			if (iterator.nextInt() >= count) {
+				iterator.remove();
+			}
+		}
 	}
 
 	public void acceptDirectives(DirectiveHolder directives) {

@@ -65,8 +65,21 @@ public class RenderGlobalIrisMixin {
         this.actinium$entityOutlinePass.finish();
     }
 
+    @Unique
+    private final org.joml.Matrix4f actinium$skyModelView = new org.joml.Matrix4f();
+
+    @Unique
+    private boolean actinium$skyModelViewSaved;
+
     @Inject(method = "renderSky(FI)V", at = @At("HEAD"))
     private void actinium$beginSky(float partialTicks, int pass, CallbackInfo ci) {
+        // The sky rotates the model view by the celestial angle and must leave the stack the way it
+        // found it. It does not on this version: the leftover rotation then tilts every later draw
+        // that shares the stack, which is what moved entities off the ground while the terrain, with
+        // its own matrices, stayed correct. Keep the camera model view and put it back afterwards.
+        actinium$skyModelView.set(com.gtnewhorizons.angelica.glsm.GLSMMatrices.getModelViewMatrix());
+        actinium$skyModelViewSaved = true;
+
         if (!Iris.enabled) {
             return;
         }
@@ -79,6 +92,11 @@ public class RenderGlobalIrisMixin {
 
     @Inject(method = "renderSky(FI)V", at = @At("RETURN"))
     private void actinium$endSky(float partialTicks, int pass, CallbackInfo ci) {
+        if (actinium$skyModelViewSaved) {
+            actinium$skyModelViewSaved = false;
+            com.gtnewhorizons.angelica.glsm.GLSMMatrices.setModelViewMatrix(actinium$skyModelView);
+        }
+
         if (!Iris.enabled) {
             return;
         }

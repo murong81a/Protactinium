@@ -271,12 +271,14 @@ if ($NoReobf) { return }
 $allErrors = ($summary | Measure-Object -Property Errors -Sum).Sum
 if ($allErrors -gt 0) {
     Write-Host "Not packaging: $allErrors compile errors remain."
-    return
+    # A bare return exits 0 and let cycle.ps1 deploy the previous jar, which produced misleading
+    # test runs. A failed compile must fail the build.
+    exit 1
 }
 
 # ---- package -------------------------------------------------------------
 $modId = 'protactinium'
-$version = 'alpha-0.0.1-1.10.2'
+$version = 'alpha-0.0.5-1.10.2'
 $stage = Join-Path $base 'build\stage'
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force $stage | Out-Null

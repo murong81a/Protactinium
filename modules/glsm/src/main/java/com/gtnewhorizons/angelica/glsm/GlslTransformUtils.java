@@ -63,6 +63,16 @@ public class GlslTransformUtils {
 
     private static final Pattern TEXTURE_PATTERN = Pattern.compile("\\btexture\\s*\\(|(\\btexture\\b)");
 
+    /**
+     * A float literal carrying a C-style type suffix, which GLSL does not define. The lookarounds
+     * keep hexadecimal literals such as {@code 0x1f} and identifiers ending in a digit out.
+     */
+    private static final Pattern FLOAT_SUFFIX = Pattern.compile(
+        "(?<![0-9A-Za-z_.])([0-9]+(?:[.][0-9]*)?(?:[eE][+-]?[0-9]+)?)[fF](?![0-9A-Za-z_])");
+
+    private static final Pattern FMA_CALL = Pattern.compile("\\bfma\\s*\\(");
+    private static final Pattern VERSION_LINE = Pattern.compile("(?m)^\\s*#version[^\\n]*");
+
     private record ReservedWordRename(Pattern pattern, String replacement) {}
 
     /**
@@ -115,6 +125,52 @@ public class GlslTransformUtils {
             source = rename.pattern().matcher(source).replaceAll(rename.replacement());
         }
         return source;
+    }
+
+    /**
+     * Removes the C-style {@code f} suffix that some packs append to float literals, for example
+     * {@code mod(time, 40f)}. The driver tolerates it, the ANTLR grammar does not: the suffix is
+     * lexed as a separate identifier, the parser reports a syntax error, and the error-recovered
+     * tree prints back as broken GLSL containing literal {@code <missing ';'>} markers. Measured on
+     * 2026-11-23 with iterationT Next, whose composite vertex shader produced a driver error
+     * cascade from exactly this. The suffix is simply dropped, and a literal with no decimal
+     * point or exponent gains one so it stays a float.
+     */
+    public static String normalizeFloatSuffixes(String source) {
+        final Matcher matcher = FLOAT_SUFFIX.matcher(source);
+        if (!matcher.find()) {
+            return source;
+        }
+        final StringBuilder builder = new StringBuilder(source.length());
+        do {
+            final String number = matcher.group(1);
+            final boolean floating = number.indexOf('.') >= 0 || number.indexOf('e') >= 0 || number.indexOf('E') >= 0;
+            matcher.appendReplacement(builder, Matcher.quoteReplacement(floating ? number : number + ".0"));
+        } while (matcher.find());
+        matcher.appendTail(builder);
+        return builder.toString();
+    }
+
+    /**
+     * Enables {@code GL_ARB_gpu_shader5} when a pre-4.00 shader calls {@code fma}.
+     *
+     * <p>{@code fma} became core in GLSL 4.00. NVIDIA refuses it below that version unless the
+     * extension is enabled, even on hardware that exposes the extension. Hoisting the whole
+     * shader to 400 is not an option: measured on 2026-11-23 with iterationT Next, compiling at
+     * 400 made {@code mod(int, float)} ambiguous and broke the composite shader. The extension
+     * keeps the negotiated version and changes only the builtin availability. Sources that
+     * already name the extension are left alone.</p>
+     */
+    public static String enableGpuShader5ForFma(String source, int targetVersion) {
+        if (targetVersion >= 400 || source.contains("GL_ARB_gpu_shader5") || !FMA_CALL.matcher(source).find()) {
+            return source;
+        }
+        final Matcher versionLine = VERSION_LINE.matcher(source);
+        if (!versionLine.find()) {
+            return source;
+        }
+        final int insertAt = versionLine.end();
+        return source.substring(0, insertAt) + "\n#extension GL_ARB_gpu_shader5 : enable" + source.substring(insertAt);
     }
 
     public static String renameReservedWords(String source, int targetVersion) {

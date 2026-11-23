@@ -4,6 +4,7 @@ import com.mitchej123.lwjgl.GL20;
 import com.mitchej123.lwjgl.GL43;
 import static com.mitchej123.lwjgl.LWJGLServiceProvider.LWJGL;
 
+import com.gtnewhorizons.angelica.glsm.GLSMPrograms;
 import dhj.embeddedt.embeddium.impl.gl.GlObject;
 import dhj.embeddedt.embeddium.impl.gl.debug.GLDebug;
 import dhj.embeddedt.embeddium.impl.gl.shader.uniform.GlUniform;
@@ -35,10 +36,15 @@ public class GlProgram<T> extends GlObject implements ShaderBindingContext {
 
     public void bind() {
         LWJGL.glUseProgram(this.handle());
+        // GLSM caches the active program, and the direct bind above is invisible to it. Tell the
+        // cache what is really bound, or its next cached bind of the same number is skipped and the
+        // uniforms that follow address the wrong program.
+        GLSMPrograms.onExternalProgramBind(this.handle());
     }
 
     public void unbind() {
         LWJGL.glUseProgram(0);
+        GLSMPrograms.onExternalProgramBind(0);
     }
 
     @Override

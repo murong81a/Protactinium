@@ -606,6 +606,37 @@ public final class GLSMPrograms {
             return ctx().activeProgram;
         }
 
+    /**
+     * Records a program that the caller bound with a direct {@code glUseProgram}, outside the
+     * cache-aware path. Without this, the cache keeps naming the previous program, and the next
+     * cached {@link #glUseProgram(int)} for that same program skips its real call while a
+     * different program is bound. Every uniform upload after the skip then targets the wrong
+     * program, which fails with {@code GL_INVALID_OPERATION} for locations that do not exist in
+     * it.
+     *
+     * <p>Program zero is the fixed-function emulation in this renderer, so it is restored even
+     * though the caller issued a real {@code glUseProgram(0)}: the emulation must never draw with
+     * a program that is not actually bound. The program change hooks are not fired, because the
+     * caller owns the surrounding pass state.
+     */
+    public static void onExternalProgramBind(int program) {
+        final ShaderManager ffp = ShaderManager.getInstance();
+
+        if (program == 0) {
+            // Deactivate first so a variant the emulation still considers current is bound again.
+            ffp.deactivate();
+            if (ShaderManager.isEnabled()) {
+                ffp.activate();
+            }
+        } else {
+            ffp.deactivate();
+        }
+
+        if (ctx().activeProgram != program) {
+            ctx().activeProgram = program;
+        }
+    }
+
     public static void glBindFragDataLocation(int program, int colorNumber, CharSequence name) { rejectExitCapture(); RENDER_BACKEND.bindFragDataLocation(program, colorNumber, name); }
 
     public static int glGetUniformBlockIndex(int program, CharSequence name) { rejectExitCapture(); return RENDER_BACKEND.getUniformBlockIndex(program, name); }
